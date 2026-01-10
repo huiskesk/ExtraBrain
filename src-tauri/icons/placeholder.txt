@@ -1,0 +1,12 @@
+Generate proper icons for the Tauri app:
+
+Required icons:
+- 32x32.png
+- 128x128.png
+- 128x128@2x.png (256x256)
+- icon.icns (macOS)
+- icon.ico (Windows)
+
+You can use tools like:
+- https://tauri.app/v1/guides/features/icons
+- Run `pnpm tauri icon <source-image>` with a 1024x1024 source image

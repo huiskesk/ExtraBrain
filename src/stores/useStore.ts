@@ -1,0 +1,244 @@
+import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/tauri";
+import type { Notebook, Note, ViewMode } from "../types";
+
+interface Store {
+  // State
+  notebooks: Notebook[];
+  notes: Note[];
+  selectedNotebookId: string | null;
+  selectedNoteId: string | null;
+  searchQuery: string;
+  isSearching: boolean;
+  viewMode: ViewMode;
+  isLoading: boolean;
+
+  // Notebook actions
+  loadNotebooks: () => Promise<void>;
+  createNotebook: (name: string, color?: string) => Promise<Notebook>;
+  updateNotebook: (id: string, updates: Partial<Notebook>) => Promise<void>;
+  deleteNotebook: (id: string) => Promise<void>;
+  selectNotebook: (id: string | null) => void;
+
+  // Note actions
+  loadNotes: (notebookId: string) => Promise<void>;
+  createNote: (notebookId: string, title?: string, content?: string, contentType?: string, sourceUrl?: string) => Promise<Note>;
+  updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
+  deleteNote: (id: string) => Promise<void>;
+  selectNote: (id: string | null) => void;
+  moveNoteToNotebook: (noteId: string, notebookId: string) => Promise<void>;
+
+  // Search
+  searchNotes: (query: string) => Promise<void>;
+  clearSearch: () => void;
+
+  // View mode
+  setViewMode: (mode: ViewMode) => void;
+
+  // PDF
+  importPdf: (notebookId: string, fileName: string, data: number[]) => Promise<Note>;
+}
+
+export const useStore = create<Store>((set, get) => ({
+  notebooks: [],
+  notes: [],
+  selectedNotebookId: null,
+  selectedNoteId: null,
+  searchQuery: "",
+  isSearching: false,
+  viewMode: "edit",
+  isLoading: false,
+
+  // Notebook actions
+  loadNotebooks: async () => {
+    try {
+      const notebooks = await invoke<Notebook[]>("get_all_notebooks");
+      set({ notebooks });
+
+      // Auto-select first notebook if none selected
+      if (!get().selectedNotebookId && notebooks.length > 0) {
+        get().selectNotebook(notebooks[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to load notebooks:", error);
+    }
+  },
+
+  createNotebook: async (name: string, color?: string) => {
+    try {
+      const notebook = await invoke<Notebook>("create_notebook", { name, color });
+      set((state) => ({ notebooks: [...state.notebooks, notebook] }));
+      return notebook;
+    } catch (error) {
+      console.error("Failed to create notebook:", error);
+      throw error;
+    }
+  },
+
+  updateNotebook: async (id: string, updates: Partial<Notebook>) => {
+    try {
+      await invoke("update_notebook", { id, ...updates });
+      set((state) => ({
+        notebooks: state.notebooks.map((nb) =>
+          nb.id === id ? { ...nb, ...updates } : nb
+        ),
+      }));
+    } catch (error) {
+      console.error("Failed to update notebook:", error);
+      throw error;
+    }
+  },
+
+  deleteNotebook: async (id: string) => {
+    try {
+      await invoke("delete_notebook", { id });
+      const { notebooks, selectedNotebookId } = get();
+      const newNotebooks = notebooks.filter((nb) => nb.id !== id);
+
+      set({ notebooks: newNotebooks });
+
+      // If deleted notebook was selected, select first remaining
+      if (selectedNotebookId === id && newNotebooks.length > 0) {
+        get().selectNotebook(newNotebooks[0].id);
+      } else if (newNotebooks.length === 0) {
+        set({ selectedNotebookId: null, notes: [], selectedNoteId: null });
+      }
+    } catch (error) {
+      console.error("Failed to delete notebook:", error);
+      throw error;
+    }
+  },
+
+  selectNotebook: (id: string | null) => {
+    set({ selectedNotebookId: id, selectedNoteId: null, isSearching: false, searchQuery: "" });
+    if (id) {
+      get().loadNotes(id);
+    }
+  },
+
+  // Note actions
+  loadNotes: async (notebookId: string) => {
+    try {
+      set({ isLoading: true });
+      const notes = await invoke<Note[]>("get_notes_by_notebook", { notebookId });
+      set({ notes, isLoading: false });
+    } catch (error) {
+      console.error("Failed to load notes:", error);
+      set({ isLoading: false });
+    }
+  },
+
+  createNote: async (notebookId: string, title = "Untitled Note", content = "", contentType = "markdown", sourceUrl?: string) => {
+    try {
+      const note = await invoke<Note>("create_note", {
+        notebookId,
+        title,
+        content,
+        contentType,
+        sourceUrl,
+      });
+      set((state) => ({ notes: [note, ...state.notes] }));
+      get().selectNote(note.id);
+      return note;
+    } catch (error) {
+      console.error("Failed to create note:", error);
+      throw error;
+    }
+  },
+
+  updateNote: async (id: string, updates: Partial<Note>) => {
+    try {
+      await invoke("update_note", { id, ...updates });
+      set((state) => ({
+        notes: state.notes.map((note) =>
+          note.id === id ? { ...note, ...updates, updated_at: new Date().toISOString() } : note
+        ),
+      }));
+    } catch (error) {
+      console.error("Failed to update note:", error);
+      throw error;
+    }
+  },
+
+  deleteNote: async (id: string) => {
+    try {
+      await invoke("delete_note", { id });
+      const { notes, selectedNoteId } = get();
+      const newNotes = notes.filter((note) => note.id !== id);
+
+      set({ notes: newNotes });
+
+      // If deleted note was selected, clear selection
+      if (selectedNoteId === id) {
+        set({ selectedNoteId: null });
+      }
+    } catch (error) {
+      console.error("Failed to delete note:", error);
+      throw error;
+    }
+  },
+
+  selectNote: (id: string | null) => {
+    set({ selectedNoteId: id });
+  },
+
+  moveNoteToNotebook: async (noteId: string, notebookId: string) => {
+    try {
+      await invoke("move_note_to_notebook", { noteId, notebookId });
+
+      // Remove note from current list if it was moved to different notebook
+      const { selectedNotebookId, notes } = get();
+      if (selectedNotebookId !== notebookId) {
+        set({
+          notes: notes.filter((note) => note.id !== noteId),
+          selectedNoteId: null,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to move note:", error);
+      throw error;
+    }
+  },
+
+  // Search
+  searchNotes: async (query: string) => {
+    if (!query.trim()) {
+      get().clearSearch();
+      return;
+    }
+
+    try {
+      set({ searchQuery: query, isSearching: true, isLoading: true });
+      const notes = await invoke<Note[]>("search_notes", { query });
+      set({ notes, isLoading: false });
+    } catch (error) {
+      console.error("Failed to search notes:", error);
+      set({ isLoading: false });
+    }
+  },
+
+  clearSearch: () => {
+    const { selectedNotebookId } = get();
+    set({ searchQuery: "", isSearching: false });
+    if (selectedNotebookId) {
+      get().loadNotes(selectedNotebookId);
+    }
+  },
+
+  // View mode
+  setViewMode: (mode: ViewMode) => {
+    set({ viewMode: mode });
+  },
+
+  // PDF
+  importPdf: async (notebookId: string, fileName: string, data: number[]) => {
+    try {
+      const note = await invoke<Note>("import_pdf", { notebookId, fileName, data });
+      set((state) => ({ notes: [note, ...state.notes] }));
+      return note;
+    } catch (error) {
+      console.error("Failed to import PDF:", error);
+      throw error;
+    }
+  },
+}));

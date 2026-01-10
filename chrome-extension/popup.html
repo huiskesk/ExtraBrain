@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExtraBrain Clipper</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 350px;
+      background: #fff;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px;
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      color: white;
+    }
+
+    .header-logo {
+      width: 32px;
+      height: 32px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #22c55e;
+      font-size: 12px;
+    }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+
+    .field-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .field-input:focus {
+      outline: none;
+      border-color: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+    }
+
+    .field-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+
+    .field-textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      min-height: 100px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .clip-options {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .clip-option {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      text-align: center;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .clip-option:hover {
+      border-color: #22c55e;
+    }
+
+    .clip-option.selected {
+      border-color: #22c55e;
+      background: #f0fdf4;
+      color: #16a34a;
+    }
+
+    .clip-option-icon {
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #22c55e;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #16a34a;
+    }
+
+    .btn-primary:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .status-success {
+      background: #f0fdf4;
+      color: #16a34a;
+    }
+
+    .status-error {
+      background: #fef2f2;
+      color: #dc2626;
+    }
+
+    .status-info {
+      background: #f0f9ff;
+      color: #0284c7;
+    }
+
+    .footer {
+      padding: 12px 16px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid white;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .url-preview {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-logo">EB</div>
+    <div class="header-title">Clip to ExtraBrain</div>
+  </div>
+
+  <div class="content">
+    <div id="main-content">
+      <div class="clip-options">
+        <div class="clip-option selected" data-type="article">
+          <div class="clip-option-icon">📄</div>
+          <div>Article</div>
+        </div>
+        <div class="clip-option" data-type="selection">
+          <div class="clip-option-icon">✂️</div>
+          <div>Selection</div>
+        </div>
+        <div class="clip-option" data-type="full">
+          <div class="clip-option-icon">📋</div>
+          <div>Full Page</div>
+        </div>
+        <div class="clip-option" data-type="url">
+          <div class="clip-option-icon">🔗</div>
+          <div>URL Only</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Title</label>
+        <input type="text" id="clip-title" class="field-input" placeholder="Note title">
+        <div id="url-preview" class="url-preview"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Notebook</label>
+        <select id="notebook-select" class="field-select">
+          <option value="">Select notebook...</option>
+        </select>
+      </div>
+
+      <div class="field" id="notes-field">
+        <label class="field-label">Notes (optional)</label>
+        <textarea id="clip-notes" class="field-textarea" placeholder="Add your notes..."></textarea>
+      </div>
+
+      <button id="clip-btn" class="btn btn-primary">
+        <span id="btn-text">Save to ExtraBrain</span>
+      </button>
+
+      <div id="status"></div>
+    </div>
+
+    <div id="setup-content" style="display: none;">
+      <div class="status status-info">
+        <strong>Setup Required</strong>
+        <p style="margin-top: 8px;">Open ExtraBrain app and enable the web clipper API to start clipping pages.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    ExtraBrain Web Clipper v0.1.0
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

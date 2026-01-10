@@ -1,0 +1,488 @@
+use rusqlite::{Connection, Result, params};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+use std::path::PathBuf;
+use tauri::api::path::app_data_dir;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Notebook {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub icon: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Note {
+    pub id: String,
+    pub notebook_id: String,
+    pub title: String,
+    pub content: String,
+    pub content_type: String, // "markdown", "html", "pdf"
+    pub source_url: Option<String>,
+    pub pdf_path: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub is_pinned: bool,
+    pub is_archived: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateNotebook {
+    pub name: String,
+    pub color: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateNotebook {
+    pub id: String,
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub icon: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateNote {
+    pub notebook_id: String,
+    pub title: String,
+    pub content: String,
+    pub content_type: String,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateNote {
+    pub id: String,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub is_pinned: Option<bool>,
+    pub is_archived: Option<bool>,
+}
+
+pub struct Database {
+    conn: Connection,
+    data_dir: PathBuf,
+}
+
+impl Database {
+    pub fn new() -> Result<Self> {
+        // Get app data directory
+        let config = tauri::Config::default();
+        let data_dir = app_data_dir(&config)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("ExtraBrain");
+
+        // Create data directory if it doesn't exist
+        std::fs::create_dir_all(&data_dir).ok();
+        std::fs::create_dir_all(data_dir.join("pdfs")).ok();
+
+        let db_path = data_dir.join("extrabrain.db");
+        let conn = Connection::open(&db_path)?;
+
+        let db = Database { conn, data_dir };
+        db.init_tables()?;
+        db.create_default_notebook()?;
+
+        Ok(db)
+    }
+
+    fn init_tables(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS notebooks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                color TEXT,
+                icon TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS notes (
+                id TEXT PRIMARY KEY,
+                notebook_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'markdown',
+                source_url TEXT,
+                pdf_path TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_pinned INTEGER DEFAULT 0,
+                is_archived INTEGER DEFAULT 0,
+                FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id);
+            CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
+
+            -- Full-text search
+            CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                title,
+                content,
+                content='notes',
+                content_rowid='rowid'
+            );
+
+            -- Triggers to keep FTS in sync
+            CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+                INSERT INTO notes_fts(rowid, title, content) VALUES (NEW.rowid, NEW.title, NEW.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+                INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES('delete', OLD.rowid, OLD.title, OLD.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+                INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES('delete', OLD.rowid, OLD.title, OLD.content);
+                INSERT INTO notes_fts(rowid, title, content) VALUES (NEW.rowid, NEW.title, NEW.content);
+            END;
+            "
+        )?;
+        Ok(())
+    }
+
+    fn create_default_notebook(&self) -> Result<()> {
+        let count: i32 = self.conn.query_row(
+            "SELECT COUNT(*) FROM notebooks",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if count == 0 {
+            let now = Utc::now().to_rfc3339();
+            self.conn.execute(
+                "INSERT INTO notebooks (id, name, color, created_at, updated_at, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    "My Notes",
+                    "#22c55e",
+                    now,
+                    now,
+                    0
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn data_dir(&self) -> &PathBuf {
+        &self.data_dir
+    }
+
+    // Notebook operations
+    pub fn create_notebook(&self, input: CreateNotebook) -> Result<Notebook> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        let max_order: i32 = self.conn
+            .query_row("SELECT COALESCE(MAX(sort_order), 0) FROM notebooks", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        self.conn.execute(
+            "INSERT INTO notebooks (id, name, color, icon, created_at, updated_at, sort_order)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, input.name, input.color, input.icon, now, now, max_order + 1],
+        )?;
+
+        Ok(Notebook {
+            id,
+            name: input.name,
+            color: input.color,
+            icon: input.icon,
+            created_at: now.clone(),
+            updated_at: now,
+            sort_order: max_order + 1,
+        })
+    }
+
+    pub fn get_all_notebooks(&self) -> Result<Vec<Notebook>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, color, icon, created_at, updated_at, sort_order
+             FROM notebooks ORDER BY sort_order ASC"
+        )?;
+
+        let notebooks = stmt.query_map([], |row| {
+            Ok(Notebook {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                color: row.get(2)?,
+                icon: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+                sort_order: row.get(6)?,
+            })
+        })?;
+
+        notebooks.collect()
+    }
+
+    pub fn update_notebook(&self, input: UpdateNotebook) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+
+        if let Some(name) = input.name {
+            self.conn.execute(
+                "UPDATE notebooks SET name = ?1, updated_at = ?2 WHERE id = ?3",
+                params![name, now, input.id],
+            )?;
+        }
+        if let Some(color) = input.color {
+            self.conn.execute(
+                "UPDATE notebooks SET color = ?1, updated_at = ?2 WHERE id = ?3",
+                params![color, now, input.id],
+            )?;
+        }
+        if let Some(icon) = input.icon {
+            self.conn.execute(
+                "UPDATE notebooks SET icon = ?1, updated_at = ?2 WHERE id = ?3",
+                params![icon, now, input.id],
+            )?;
+        }
+        if let Some(sort_order) = input.sort_order {
+            self.conn.execute(
+                "UPDATE notebooks SET sort_order = ?1, updated_at = ?2 WHERE id = ?3",
+                params![sort_order, now, input.id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_notebook(&self, id: &str) -> Result<()> {
+        // First delete all notes in the notebook
+        self.conn.execute("DELETE FROM notes WHERE notebook_id = ?1", params![id])?;
+        // Then delete the notebook
+        self.conn.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // Note operations
+    pub fn create_note(&self, input: CreateNote) -> Result<Note> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "INSERT INTO notes (id, notebook_id, title, content, content_type, source_url, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                id,
+                input.notebook_id,
+                input.title,
+                input.content,
+                input.content_type,
+                input.source_url,
+                now,
+                now
+            ],
+        )?;
+
+        Ok(Note {
+            id,
+            notebook_id: input.notebook_id,
+            title: input.title,
+            content: input.content,
+            content_type: input.content_type,
+            source_url: input.source_url,
+            pdf_path: None,
+            created_at: now.clone(),
+            updated_at: now,
+            is_pinned: false,
+            is_archived: false,
+        })
+    }
+
+    pub fn get_note(&self, id: &str) -> Result<Note> {
+        self.conn.query_row(
+            "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
+                    created_at, updated_at, is_pinned, is_archived
+             FROM notes WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(Note {
+                    id: row.get(0)?,
+                    notebook_id: row.get(1)?,
+                    title: row.get(2)?,
+                    content: row.get(3)?,
+                    content_type: row.get(4)?,
+                    source_url: row.get(5)?,
+                    pdf_path: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                    is_pinned: row.get(9)?,
+                    is_archived: row.get(10)?,
+                })
+            },
+        )
+    }
+
+    pub fn get_notes_by_notebook(&self, notebook_id: &str) -> Result<Vec<Note>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
+                    created_at, updated_at, is_pinned, is_archived
+             FROM notes
+             WHERE notebook_id = ?1 AND is_archived = 0
+             ORDER BY is_pinned DESC, updated_at DESC"
+        )?;
+
+        let notes = stmt.query_map(params![notebook_id], |row| {
+            Ok(Note {
+                id: row.get(0)?,
+                notebook_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                content_type: row.get(4)?,
+                source_url: row.get(5)?,
+                pdf_path: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                is_pinned: row.get(9)?,
+                is_archived: row.get(10)?,
+            })
+        })?;
+
+        notes.collect()
+    }
+
+    pub fn update_note(&self, input: UpdateNote) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+
+        if let Some(title) = input.title {
+            self.conn.execute(
+                "UPDATE notes SET title = ?1, updated_at = ?2 WHERE id = ?3",
+                params![title, now, input.id],
+            )?;
+        }
+        if let Some(content) = input.content {
+            self.conn.execute(
+                "UPDATE notes SET content = ?1, updated_at = ?2 WHERE id = ?3",
+                params![content, now, input.id],
+            )?;
+        }
+        if let Some(is_pinned) = input.is_pinned {
+            self.conn.execute(
+                "UPDATE notes SET is_pinned = ?1, updated_at = ?2 WHERE id = ?3",
+                params![is_pinned, now, input.id],
+            )?;
+        }
+        if let Some(is_archived) = input.is_archived {
+            self.conn.execute(
+                "UPDATE notes SET is_archived = ?1, updated_at = ?2 WHERE id = ?3",
+                params![is_archived, now, input.id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_note(&self, id: &str) -> Result<()> {
+        // Get note to check for PDF file
+        if let Ok(note) = self.get_note(id) {
+            if let Some(pdf_path) = note.pdf_path {
+                // Delete the PDF file if it exists
+                std::fs::remove_file(pdf_path).ok();
+            }
+        }
+        self.conn.execute("DELETE FROM notes WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn move_note_to_notebook(&self, note_id: &str, notebook_id: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE notes SET notebook_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![notebook_id, now, note_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn search_notes(&self, query: &str) -> Result<Vec<Note>> {
+        let search_query = format!("{}*", query);
+        let mut stmt = self.conn.prepare(
+            "SELECT n.id, n.notebook_id, n.title, n.content, n.content_type, n.source_url,
+                    n.pdf_path, n.created_at, n.updated_at, n.is_pinned, n.is_archived
+             FROM notes n
+             JOIN notes_fts fts ON n.rowid = fts.rowid
+             WHERE notes_fts MATCH ?1 AND n.is_archived = 0
+             ORDER BY rank"
+        )?;
+
+        let notes = stmt.query_map(params![search_query], |row| {
+            Ok(Note {
+                id: row.get(0)?,
+                notebook_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                content_type: row.get(4)?,
+                source_url: row.get(5)?,
+                pdf_path: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                is_pinned: row.get(9)?,
+                is_archived: row.get(10)?,
+            })
+        })?;
+
+        notes.collect()
+    }
+
+    // PDF operations
+    pub fn import_pdf(&self, notebook_id: &str, file_name: &str, data: &[u8]) -> Result<Note> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        // Save PDF to disk
+        let pdf_dir = self.data_dir.join("pdfs");
+        let pdf_path = pdf_dir.join(format!("{}_{}", id, file_name));
+        std::fs::write(&pdf_path, data).map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+        })?;
+
+        let pdf_path_str = pdf_path.to_string_lossy().to_string();
+
+        self.conn.execute(
+            "INSERT INTO notes (id, notebook_id, title, content, content_type, pdf_path, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                id,
+                notebook_id,
+                file_name,
+                format!("PDF Document: {}", file_name),
+                "pdf",
+                pdf_path_str,
+                now,
+                now
+            ],
+        )?;
+
+        Ok(Note {
+            id,
+            notebook_id: notebook_id.to_string(),
+            title: file_name.to_string(),
+            content: format!("PDF Document: {}", file_name),
+            content_type: "pdf".to_string(),
+            source_url: None,
+            pdf_path: Some(pdf_path_str),
+            created_at: now.clone(),
+            updated_at: now,
+            is_pinned: false,
+            is_archived: false,
+        })
+    }
+
+    pub fn get_pdf_data(&self, note_id: &str) -> Result<Vec<u8>> {
+        let note = self.get_note(note_id)?;
+        if let Some(pdf_path) = note.pdf_path {
+            std::fs::read(&pdf_path).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+            })
+        } else {
+            Err(rusqlite::Error::QueryReturnedNoRows)
+        }
+    }
+}
