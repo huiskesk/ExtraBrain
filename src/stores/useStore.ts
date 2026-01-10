@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/tauri";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type { Notebook, Note, ViewMode } from "../types";
+
+// Event payload from backend when a note is created via HTTP API
+interface NoteCreatedEvent {
+  note: Note;
+}
 
 interface Store {
   // State
@@ -28,6 +34,9 @@ interface Store {
   selectNote: (id: string | null) => void;
   moveNoteToNotebook: (noteId: string, notebookId: string) => Promise<void>;
 
+  // Event handler for notes created via Chrome extension
+  addNoteFromEvent: (note: Note) => void;
+
   // Search
   searchNotes: (query: string) => Promise<void>;
   clearSearch: () => void;
@@ -37,6 +46,9 @@ interface Store {
 
   // PDF
   importPdf: (notebookId: string, fileName: string, data: number[]) => Promise<Note>;
+
+  // Event listener management
+  setupEventListeners: () => Promise<UnlistenFn>;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -200,6 +212,25 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  // Add a note from a Tauri event (triggered by Chrome extension via HTTP API)
+  addNoteFromEvent: (note: Note) => {
+    const { selectedNotebookId, notes, isSearching } = get();
+
+    // Only add to the list if we're viewing the notebook this note belongs to
+    // and we're not in search mode
+    if (selectedNotebookId === note.notebook_id && !isSearching) {
+      // Check if note already exists (avoid duplicates)
+      const exists = notes.some((n) => n.id === note.id);
+      if (!exists) {
+        // Add to the beginning of the list (most recent first)
+        set({ notes: [note, ...notes] });
+        console.log("Added note from web clipper:", note.title);
+      }
+    } else {
+      console.log("Note received for different notebook:", note.notebook_id);
+    }
+  },
+
   // Search
   searchNotes: async (query: string) => {
     if (!query.trim()) {
@@ -240,5 +271,22 @@ export const useStore = create<Store>((set, get) => ({
       console.error("Failed to import PDF:", error);
       throw error;
     }
+  },
+
+  // Setup event listeners for backend events
+  // Call this once when the app starts, returns cleanup function
+  setupEventListeners: async () => {
+    console.log("Setting up Tauri event listeners...");
+
+    // Listen for notes created via the HTTP API (Chrome extension)
+    const unlisten = await listen<NoteCreatedEvent>("note-created", (event) => {
+      console.log("Received note-created event:", event.payload);
+      get().addNoteFromEvent(event.payload.note);
+    });
+
+    console.log("Event listeners ready");
+
+    // Return the cleanup function
+    return unlisten;
   },
 }));

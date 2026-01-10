@@ -23,25 +23,6 @@ fn main() {
     // Initialize the database for Tauri commands
     let db = Database::new().expect("Failed to initialize database");
 
-    // Create shared database reference for HTTP server
-    // Arc = Atomic Reference Counting (thread-safe shared ownership)
-    // Mutex = Mutual Exclusion (thread-safe mutable access)
-    let http_db: server::SharedDatabase = Arc::new(Mutex::new(
-        Database::new().expect("Failed to initialize database for HTTP server"),
-    ));
-
-    // Start the HTTP server in a background thread
-    // This runs independently of the Tauri main thread
-    std::thread::spawn(move || {
-        // Create a new Tokio runtime for the HTTP server
-        let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-
-        // Run the HTTP server (blocks this thread, which is fine)
-        runtime.block_on(async {
-            server::start_http_server(http_db).await;
-        });
-    });
-
     // Build and run the Tauri application
     tauri::Builder::default()
         // Add application state (database) accessible to all commands
@@ -75,6 +56,27 @@ fn main() {
                 let window = app.get_window("main").unwrap();
                 window.open_devtools();
             }
+
+            // Get the AppHandle for the HTTP server to emit events
+            let app_handle = app.handle();
+
+            // Create shared database for HTTP server
+            let http_db: server::SharedDatabase = Arc::new(Mutex::new(
+                Database::new().expect("Failed to initialize database for HTTP server"),
+            ));
+
+            // Start the HTTP server in a background thread
+            // We start it here in setup() so we have access to AppHandle
+            std::thread::spawn(move || {
+                // Create a new Tokio runtime for the HTTP server
+                let runtime = tokio::runtime::Runtime::new()
+                    .expect("Failed to create Tokio runtime");
+
+                // Run the HTTP server (blocks this thread, which is fine)
+                runtime.block_on(async {
+                    server::start_http_server(http_db, app_handle).await;
+                });
+            });
 
             println!("ExtraBrain started successfully!");
             println!("HTTP API available at http://127.0.0.1:3847");

@@ -6,11 +6,26 @@ import NoteEditor from "./components/NoteEditor";
 import SearchBar from "./components/SearchBar";
 
 function App() {
-  const { loadNotebooks, selectedNoteId } = useStore();
+  const { loadNotebooks, setupEventListeners, selectedNoteId } = useStore();
 
   useEffect(() => {
+    // Load notebooks on startup
     loadNotebooks();
-  }, [loadNotebooks]);
+
+    // Setup Tauri event listeners for real-time updates from Chrome extension
+    let cleanup: (() => void) | undefined;
+
+    setupEventListeners().then((unlisten) => {
+      cleanup = unlisten;
+    });
+
+    // Cleanup listeners on unmount
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [loadNotebooks, setupEventListeners]);
 
   return (
     <div className="flex h-screen bg-gray-100">

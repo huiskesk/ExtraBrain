@@ -9,12 +9,20 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Manager};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::db::{CreateNote, Database, Note, Notebook};
 
 // Shared state type for the HTTP server
 pub type SharedDatabase = Arc<Mutex<Database>>;
+
+// Combined state for Axum handlers (database + app handle for events)
+#[derive(Clone)]
+pub struct ServerState {
+    pub db: SharedDatabase,
+    pub app_handle: AppHandle,
+}
 
 // Request/Response types for the API
 
@@ -51,9 +59,15 @@ impl<T> ApiResponse<T> {
     }
 }
 
+// Event payload sent to frontend when a note is created via HTTP API
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteCreatedEvent {
+    pub note: Note,
+}
+
 // Start the HTTP server
 // This runs in a separate async task and doesn't block Tauri
-pub async fn start_http_server(db: SharedDatabase) {
+pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
     // Configure CORS to allow requests from Chrome extensions
     // Chrome extensions have origin like "chrome-extension://abcdef123456"
     let cors = CorsLayer::new()
@@ -64,6 +78,9 @@ pub async fn start_http_server(db: SharedDatabase) {
         // Allow these headers
         .allow_headers(Any);
 
+    // Create combined state with database and app handle
+    let state = ServerState { db, app_handle };
+
     // Build router with all endpoints
     let app = Router::new()
         // Health check endpoint
@@ -72,8 +89,8 @@ pub async fn start_http_server(db: SharedDatabase) {
         .route("/notebooks", get(get_notebooks))
         // Clip endpoints
         .route("/clips", post(save_clip))
-        // Add shared database state
-        .with_state(db)
+        // Add shared state (database + app handle)
+        .with_state(state)
         // Add CORS middleware
         .layer(cors);
 
@@ -97,9 +114,9 @@ async fn health_check() -> Json<ApiResponse<String>> {
 
 // GET /notebooks - Get all notebooks for the extension dropdown
 async fn get_notebooks(
-    State(db): State<SharedDatabase>,
+    State(state): State<ServerState>,
 ) -> Result<Json<Vec<Notebook>>, (StatusCode, String)> {
-    let db = db.lock().map_err(|e| {
+    let db = state.db.lock().map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Database lock error: {}", e),
@@ -118,7 +135,7 @@ async fn get_notebooks(
 
 // POST /clips - Save a web clip from the Chrome extension
 async fn save_clip(
-    State(db): State<SharedDatabase>,
+    State(state): State<ServerState>,
     Json(payload): Json<SaveClipRequest>,
 ) -> Result<Json<ApiResponse<Note>>, (StatusCode, Json<ApiResponse<Note>>)> {
     // Validate required fields
@@ -137,15 +154,16 @@ async fn save_clip(
     }
 
     // Lock database and create note
-    let db = db.lock().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::err(format!("Database lock error: {}", e))),
-        )
-    })?;
+    // We scope the lock so it's released before we emit the event
+    let note = {
+        let db = state.db.lock().map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::err(format!("Database lock error: {}", e))),
+            )
+        })?;
 
-    let note = db
-        .create_note(CreateNote {
+        db.create_note(CreateNote {
             notebook_id: payload.notebook_id,
             title: payload.title,
             content: payload.content,
@@ -157,9 +175,21 @@ async fn save_clip(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiResponse::err(format!("Failed to save clip: {}", e))),
             )
-        })?;
+        })?
+    }; // db lock is released here
 
     println!("Saved web clip: {}", note.title);
+
+    // Emit event to frontend so it can update the UI in real-time
+    // The frontend listens for "note-created" events
+    let event_payload = NoteCreatedEvent { note: note.clone() };
+
+    if let Err(e) = state.app_handle.emit_all("note-created", event_payload) {
+        // Log error but don't fail the request - the clip was saved successfully
+        eprintln!("Failed to emit note-created event: {}", e);
+    } else {
+        println!("Emitted note-created event to frontend");
+    }
 
     Ok(Json(ApiResponse::ok(note)))
 }
