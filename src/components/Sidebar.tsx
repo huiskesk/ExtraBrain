@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { open } from "@tauri-apps/api/dialog";
 import { readBinaryFile } from "@tauri-apps/api/fs";
+import { invoke } from "@tauri-apps/api/tauri";
 
 const NOTEBOOK_COLORS = [
   "#22c55e", // green
@@ -44,6 +45,8 @@ export default function Sidebar() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [extensionToken, setExtensionToken] = useState<string | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +77,26 @@ export default function Sidebar() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [menuOpenId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    invoke<string>("get_extension_token")
+      .then((token) => {
+        if (isMounted) {
+          setExtensionToken(token);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setExtensionToken(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleCreateNotebook = async () => {
     if (newNotebookName.trim()) {
@@ -111,6 +134,17 @@ export default function Sidebar() {
       const fileData = await readBinaryFile(selected);
       const fileName = selected.split("/").pop() || "document.pdf";
       await importPdf(selectedNotebookId, fileName, Array.from(fileData));
+    }
+  };
+
+  const handleCopyToken = async () => {
+    if (!extensionToken) return;
+    try {
+      await navigator.clipboard.writeText(extensionToken);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 1500);
+    } catch (error) {
+      console.error("Failed to copy token:", error);
     }
   };
 
@@ -325,6 +359,25 @@ export default function Sidebar() {
         <div className="text-xs text-sidebar-muted">
           {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
         </div>
+        {extensionToken && (
+          <div className="mt-3 text-xs text-sidebar-muted">
+            <div className="flex items-center justify-between gap-2">
+              <span className="uppercase tracking-wider text-[10px]">
+                Extension Token
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyToken}
+                className="text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
+              >
+                {tokenCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <div className="mt-1 rounded bg-gray-900/60 px-2 py-1 font-mono text-[10px] text-gray-200 break-all">
+              {extensionToken}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

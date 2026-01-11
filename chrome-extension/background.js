@@ -1,6 +1,8 @@
 // ExtraBrain Web Clipper - Background Service Worker
 
 const API_URL = 'http://localhost:3847';
+const EXTENSION_TOKEN = 'extrabrain-extension-token';
+const AUTH_HEADER = { Authorization: `Bearer ${EXTENSION_TOKEN}` };
 
 // Listen for keyboard shortcut
 chrome.commands?.onCommand.addListener((command) => {
@@ -40,7 +42,7 @@ async function quickClip() {
     try {
       const response = await fetch(`${API_URL}/clips`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
         body: JSON.stringify({
           notebook_id: notebookId,
           title: tab.title,
@@ -91,7 +93,7 @@ async function syncPendingClips() {
     try {
       const response = await fetch(`${API_URL}/clips`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
         body: JSON.stringify({
           notebook_id: clip.notebookId,
           title: clip.title,
@@ -228,7 +230,7 @@ chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
   try {
     const response = await fetch(`${API_URL}/clips`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
       body: JSON.stringify({
         notebook_id: notebookId,
         title,

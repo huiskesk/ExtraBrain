@@ -10,6 +10,7 @@ mod commands;
 mod db;
 mod sanitize;
 mod server;
+mod server_config;
 
 use db::Database;
 use std::sync::{Arc, Mutex};
@@ -48,6 +49,7 @@ fn main() {
             commands::get_pdf_data,
             // Web clip commands (also available via HTTP API)
             commands::save_web_clip,
+            commands::get_extension_token,
         ])
         // Setup hook runs when the app starts
         .setup(|app| {
