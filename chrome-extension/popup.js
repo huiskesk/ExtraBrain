@@ -2,6 +2,8 @@
 // Uses Readability for article extraction - saves clean HTML directly
 
 const API_URL = 'http://localhost:3847'; // Local API endpoint
+const EXTENSION_TOKEN = 'extrabrain-extension-token';
+const AUTH_HEADER = { Authorization: `Bearer ${EXTENSION_TOKEN}` };
 
 let selectedClipType = 'article';
 let pageInfo = null;
@@ -69,7 +71,7 @@ async function loadNotebooks() {
   try {
     const response = await fetch(`${API_URL}/notebooks`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADER }
     });
 
     if (response.ok) {
@@ -178,7 +180,7 @@ async function handleClip() {
     try {
       const response = await fetch(`${API_URL}/clips`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
         body: JSON.stringify({
           notebook_id: notebookId,
           title: extractedTitle,

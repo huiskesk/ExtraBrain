@@ -3,17 +3,20 @@
 
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{header, HeaderValue, Method, Request, StatusCode},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 
 use crate::db::{CreateNote, Database, Note, Notebook};
 use crate::sanitize::sanitize_html;
+use crate::server_config::{extension_token, EXTENSION_ORIGINS};
 
 // Shared state type for the HTTP server
 pub type SharedDatabase = Arc<Mutex<Database>>;
@@ -23,6 +26,7 @@ pub type SharedDatabase = Arc<Mutex<Database>>;
 pub struct ServerState {
     pub db: SharedDatabase,
     pub app_handle: AppHandle,
+    pub extension_token: String,
 }
 
 // Request/Response types for the API
@@ -71,16 +75,28 @@ pub struct NoteCreatedEvent {
 pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
     // Configure CORS to allow requests from Chrome extensions
     // Chrome extensions have origin like "chrome-extension://abcdef123456"
+    let allowed_origins = EXTENSION_ORIGINS
+        .iter()
+        .map(|origin| HeaderValue::from_str(origin).expect("Invalid CORS origin"))
+        .collect::<Vec<_>>();
     let cors = CorsLayer::new()
-        // Allow any origin (includes chrome-extension://)
-        .allow_origin(Any)
+        // Allow only configured extension origins
+        .allow_origin(AllowOrigin::list(allowed_origins))
         // Allow these HTTP methods
-        .allow_methods(Any)
+        .allow_methods(AllowMethods::list([
+            Method::GET,
+            Method::POST,
+            Method::OPTIONS,
+        ]))
         // Allow these headers
-        .allow_headers(Any);
+        .allow_headers(AllowHeaders::list([header::AUTHORIZATION, header::CONTENT_TYPE]));
 
     // Create combined state with database and app handle
-    let state = ServerState { db, app_handle };
+    let state = ServerState {
+        db,
+        app_handle,
+        extension_token: extension_token().to_string(),
+    };
 
     // Build router with all endpoints
     let app = Router::new()
@@ -91,7 +107,9 @@ pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
         // Clip endpoints
         .route("/clips", post(save_clip))
         // Add shared state (database + app handle)
-        .with_state(state)
+        .with_state(state.clone())
+        // Add auth middleware
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         // Add CORS middleware
         .layer(cors);
 
@@ -111,6 +129,28 @@ pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
 // GET /health - Simple health check
 async fn health_check() -> Json<ApiResponse<String>> {
     Json(ApiResponse::ok("ExtraBrain is running".to_string()))
+}
+
+async fn auth_middleware(
+    State(state): State<ServerState>,
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    if request.method() == Method::OPTIONS {
+        return Ok(next.run(request).await);
+    }
+
+    let auth_header = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    let expected = format!("Bearer {}", state.extension_token);
+
+    if auth_header != Some(expected.as_str()) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    Ok(next.run(request).await)
 }
 
 // GET /notebooks - Get all notebooks for the extension dropdown

@@ -3,6 +3,7 @@ use crate::db::{
     CreateNotebook, CreateNote, Note, Notebook, UpdateNote, UpdateNotebook,
 };
 use crate::sanitize::sanitize_html;
+use crate::server_config;
 use tauri::State;
 
 // Notebook commands
@@ -184,4 +185,9 @@ pub fn save_web_clip(
         source_url: Some(source_url),
     })
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_extension_token() -> String {
+    server_config::extension_token().to_string()
 }
