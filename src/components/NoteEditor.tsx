@@ -134,33 +134,45 @@ export default function NoteEditor() {
     e.preventDefault();
     e.stopPropagation();
 
+    if (isWebClip) {
+      return;
+    }
+
     dragCounter.current++;
 
     // Check if dragging files (not internal note drag)
     if (e.dataTransfer.types.includes('Files')) {
       setIsDraggingImage(true);
     }
-  }, []);
+  }, [isWebClip]);
 
   const handleImageDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
+    if (isWebClip) {
+      return;
+    }
+
     // Check if dragging files (not internal note drag)
     if (e.dataTransfer.types.includes('Files')) {
       e.dataTransfer.dropEffect = 'copy';
     }
-  }, []);
+  }, [isWebClip]);
 
   const handleImageDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
+    if (isWebClip) {
+      return;
+    }
+
     dragCounter.current--;
     if (dragCounter.current === 0) {
       setIsDraggingImage(false);
     }
-  }, []);
+  }, [isWebClip]);
 
   const handleImageDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -169,11 +181,38 @@ export default function NoteEditor() {
     dragCounter.current = 0;
     setIsDraggingImage(false);
 
+    if (isWebClip) {
+      return;
+    }
+
     const files = Array.from(e.dataTransfer.files);
-    const imageFiles = files.filter(file =>
-      file.type.startsWith('image/') &&
-      (file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/gif' || file.type === 'image/webp')
-    );
+    const droppedFiles =
+      files.length > 0
+        ? files
+        : Array.from(e.dataTransfer.items || [])
+            .filter((item) => item.kind === "file")
+            .map((item) => item.getAsFile())
+            .filter((file): file is File => Boolean(file));
+
+    const imageTypes = new Set([
+      "image/jpeg",
+      "image/jpg",
+      "image/pjpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ]);
+
+    const imageExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp"]);
+
+    const imageFiles = droppedFiles.filter((file) => {
+      const type = file.type.toLowerCase();
+      if (type && type.startsWith("image/")) {
+        return imageTypes.has(type);
+      }
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      return extension ? imageExtensions.has(extension) : false;
+    });
 
     if (imageFiles.length === 0) {
       console.log('No valid image files found in drop');

@@ -153,8 +153,12 @@ export default function Sidebar() {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
+    if (e.dataTransfer.types.includes('Files')) {
+      return;
+    }
     // Allow dragging to any notebook except the currently selected one
-    if (notebookId !== selectedNotebookId) {
+    const sourceNotebookId = e.dataTransfer.getData('sourceNotebookId');
+    if (sourceNotebookId ? notebookId !== sourceNotebookId : notebookId !== selectedNotebookId) {
       setDragOverId(notebookId);
     }
   };
@@ -162,6 +166,10 @@ export default function Sidebar() {
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const currentTarget = e.currentTarget as HTMLElement;
+    if (currentTarget.contains(e.relatedTarget as Node)) {
+      return;
+    }
     setDragOverId(null);
   };
 
@@ -172,11 +180,16 @@ export default function Sidebar() {
 
     // Try both data formats
     const noteId = e.dataTransfer.getData('noteId') || e.dataTransfer.getData('text/plain');
+    const sourceNotebookId = e.dataTransfer.getData('sourceNotebookId');
 
     console.log('Drop event - noteId:', noteId, 'to notebook:', notebookId);
     console.log('Current notebook:', selectedNotebookId);
 
-    if (noteId && notebookId !== selectedNotebookId) {
+    const isSameNotebook = sourceNotebookId
+      ? notebookId === sourceNotebookId
+      : notebookId === selectedNotebookId;
+
+    if (noteId && !isSameNotebook) {
       console.log('Executing move...');
       try {
         await moveNoteToNotebook(noteId, notebookId);

@@ -103,6 +103,9 @@ export default function NoteList() {
     console.log('Drag start:', noteId);
     e.dataTransfer.setData('text/plain', noteId);
     e.dataTransfer.setData('noteId', noteId);
+    if (selectedNotebookId) {
+      e.dataTransfer.setData('sourceNotebookId', selectedNotebookId);
+    }
     e.dataTransfer.effectAllowed = 'move';
     setDraggedNoteId(noteId);
   };
