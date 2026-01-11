@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../stores/useStore";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Eye,
@@ -493,7 +493,14 @@ export default function NoteEditor() {
               ) : (
                 /* Render Markdown content */
                 <div className="prose prose-lg max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    urlTransform={(url) =>
+                      url.startsWith("data:image/")
+                        ? url
+                        : defaultUrlTransform(url)
+                    }
+                  >
                     {content || "*No content*"}
                   </ReactMarkdown>
                 </div>
