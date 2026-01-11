@@ -32,6 +32,7 @@ export default function NoteEditor() {
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const dragCounter = useRef(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Keep track of current note id to detect changes
   const currentNoteIdRef = useRef<string | null>(null);
@@ -129,6 +130,72 @@ export default function NoteEditor() {
     setHasChanges(true);
   }, []);
 
+  const isValidImageFile = useCallback((file: File) => {
+    const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png"]);
+    const allowedExtensions = new Set(["jpg", "jpeg", "png"]);
+    const type = file.type.toLowerCase();
+    if (type && type.startsWith("image/")) {
+      return allowedTypes.has(type);
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    return extension ? allowedExtensions.has(extension) : false;
+  }, []);
+
+  const insertImageFile = useCallback((file: File) => {
+    const maxImageSize = 5 * 1024 * 1024;
+    if (!isValidImageFile(file)) {
+      console.log("Only .jpg or .png images are supported.");
+      return;
+    }
+
+    if (file.size > maxImageSize) {
+      console.log("Image exceeds 5MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const base64Data = event.target?.result as string;
+      if (base64Data) {
+        console.log("Image loaded, inserting into note");
+
+        const useHtmlFormat = isWebClip || note?.content_type === "html";
+        let imageMarkup: string;
+        if (useHtmlFormat) {
+          imageMarkup = `<p><img src="${base64Data}" alt="${file.name}" style="max-width: 100%; height: auto;" /></p>`;
+        } else {
+          imageMarkup = `\n![${file.name}](${base64Data})\n`;
+        }
+
+        setContent((prev) => prev + imageMarkup);
+        setHasChanges(true);
+      }
+    };
+
+    reader.onerror = (error) => {
+      console.error("Error reading file:", error);
+    };
+
+    reader.readAsDataURL(file);
+  }, [isValidImageFile, isWebClip, note?.content_type]);
+
+  const handleImageUploadClick = useCallback(() => {
+    if (isWebClip) {
+      return;
+    }
+    fileInputRef.current?.click();
+  }, [isWebClip]);
+
+  const handleImageInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    insertImageFile(file);
+    e.target.value = "";
+  }, [insertImageFile]);
+
   // Image drag and drop handlers - using counter to handle child element events
   const handleImageDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -194,24 +261,12 @@ export default function NoteEditor() {
             .map((item) => item.getAsFile())
             .filter((file): file is File => Boolean(file));
 
-    const imageTypes = new Set([
-      "image/jpeg",
-      "image/jpg",
-      "image/pjpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-    ]);
-
-    const imageExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp"]);
-
     const imageFiles = droppedFiles.filter((file) => {
-      const type = file.type.toLowerCase();
-      if (type && type.startsWith("image/")) {
-        return imageTypes.has(type);
+      if (!isValidImageFile(file)) {
+        return false;
       }
-      const extension = file.name.split(".").pop()?.toLowerCase();
-      return extension ? imageExtensions.has(extension) : false;
+      const maxImageSize = 5 * 1024 * 1024;
+      return file.size <= maxImageSize;
     });
 
     if (imageFiles.length === 0) {
@@ -221,39 +276,11 @@ export default function NoteEditor() {
 
     console.log('Processing', imageFiles.length, 'image file(s)');
 
-    // Capture current content type for the closure
-    const useHtmlFormat = isWebClip || note?.content_type === "html";
-
     // Process each image file
     imageFiles.forEach((file) => {
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        const base64Data = event.target?.result as string;
-        if (base64Data) {
-          console.log('Image loaded, inserting into note');
-
-          let imageMarkup: string;
-          if (useHtmlFormat) {
-            // HTML format
-            imageMarkup = `<p><img src="${base64Data}" alt="${file.name}" style="max-width: 100%; height: auto;" /></p>`;
-          } else {
-            // Markdown format
-            imageMarkup = `\n![${file.name}](${base64Data})\n`;
-          }
-
-          setContent(prev => prev + imageMarkup);
-          setHasChanges(true);
-        }
-      };
-
-      reader.onerror = (error) => {
-        console.error('Error reading file:', error);
-      };
-
-      reader.readAsDataURL(file);
+      insertImageFile(file);
     });
-  }, [isWebClip, note?.content_type]);
+  }, [insertImageFile, isValidImageFile]);
 
   // Keyboard shortcut for save (Cmd/Ctrl + S)
   useEffect(() => {
@@ -321,6 +348,25 @@ export default function NoteEditor() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isEditing && (
+            <>
+              <button
+                onClick={handleImageUploadClick}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+              >
+                <ImageIcon size={16} />
+                Add Image
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png"
+                onChange={handleImageInputChange}
+                className="hidden"
+              />
+            </>
+          )}
+
           {/* Save Button */}
           {isEditing && (
             <button
