@@ -1,19 +1,33 @@
 // ExtraBrain Web Clipper - Content Script
 // This script runs on web pages to enable clipping functionality
+// Uses Mozilla Readability for intelligent article extraction
 
 // Listen for messages from the popup or background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   switch (request.action) {
     case 'getSelection':
-      sendResponse({ selection: window.getSelection().toString() });
+      const selection = window.getSelection().toString().trim();
+      sendResponse({
+        selection,
+        html: getSelectionHtml()
+      });
       break;
 
     case 'getArticle':
-      sendResponse({ content: extractArticle() });
+      const article = extractArticleWithReadability();
+      sendResponse(article);
+      break;
+
+    case 'getSimplifiedPage':
+      const simplified = extractSimplifiedPage();
+      sendResponse(simplified);
       break;
 
     case 'getFullPage':
-      sendResponse({ content: document.body.innerHTML });
+      sendResponse({
+        content: document.body.innerHTML,
+        title: document.title
+      });
       break;
 
     case 'getPageInfo':
@@ -21,7 +35,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         title: document.title,
         url: window.location.href,
         description: document.querySelector('meta[name="description"]')?.content || '',
-        image: document.querySelector('meta[property="og:image"]')?.content || ''
+        image: document.querySelector('meta[property="og:image"]')?.content || '',
+        author: getAuthor(),
+        publishedDate: getPublishedDate()
       });
       break;
 
@@ -39,110 +55,196 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true; // Keep the message channel open for async responses
 });
 
-// Extract article content using various heuristics
-function extractArticle() {
-  // Priority list of selectors for article content
-  const selectors = [
-    'article',
-    '[role="article"]',
-    '[itemprop="articleBody"]',
-    '.post-content',
-    '.article-content',
-    '.article-body',
-    '.entry-content',
-    '.content-body',
-    '.story-body',
-    '#article-body',
-    'main article',
-    'main',
-    '.main-content',
-    '#main-content',
-    '.post',
-    '.blog-post'
-  ];
+// Get selected text as HTML
+function getSelectionHtml() {
+  const selection = window.getSelection();
+  if (selection.rangeCount === 0) return '';
 
-  for (const selector of selectors) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent.trim().length > 200) {
-      return cleanContent(element);
-    }
+  const container = document.createElement('div');
+  for (let i = 0; i < selection.rangeCount; i++) {
+    container.appendChild(selection.getRangeAt(i).cloneContents());
   }
-
-  // Fallback: try to find the largest text container
-  const containers = document.querySelectorAll('div, section');
-  let bestContainer = null;
-  let maxTextLength = 0;
-
-  containers.forEach(container => {
-    const text = container.textContent.trim();
-    const paragraphs = container.querySelectorAll('p');
-
-    if (paragraphs.length >= 2 && text.length > maxTextLength) {
-      maxTextLength = text.length;
-      bestContainer = container;
-    }
-  });
-
-  if (bestContainer) {
-    return cleanContent(bestContainer);
-  }
-
-  // Last resort: return body content
-  return cleanContent(document.body);
+  return container.innerHTML;
 }
 
-// Clean extracted content
-function cleanContent(element) {
-  const clone = element.cloneNode(true);
+// Extract article using Mozilla Readability
+function extractArticleWithReadability() {
+  try {
+    // Check if Readability is available
+    if (typeof Readability === 'undefined') {
+      console.warn('Readability not loaded, falling back to simple extraction');
+      return {
+        title: document.title,
+        content: extractSimplifiedPage().content,
+        textContent: document.body.textContent,
+        excerpt: getExcerpt(),
+        byline: getAuthor(),
+        success: false
+      };
+    }
+
+    // Clone the document to avoid modifying the original
+    const documentClone = document.cloneNode(true);
+
+    // Create Readability instance and parse
+    const reader = new Readability(documentClone, {
+      charThreshold: 100,
+      classesToPreserve: ['highlight', 'code', 'pre']
+    });
+
+    const article = reader.parse();
+
+    if (article && article.content) {
+      return {
+        title: article.title || document.title,
+        content: article.content,
+        textContent: article.textContent,
+        excerpt: article.excerpt || getExcerpt(),
+        byline: article.byline || getAuthor(),
+        siteName: article.siteName,
+        length: article.length,
+        success: true
+      };
+    }
+
+    // Fallback if Readability couldn't parse
+    console.warn('Readability returned no content, falling back');
+    return {
+      title: document.title,
+      content: extractSimplifiedPage().content,
+      textContent: document.body.textContent,
+      excerpt: getExcerpt(),
+      byline: getAuthor(),
+      success: false
+    };
+
+  } catch (error) {
+    console.error('Readability extraction failed:', error);
+    return {
+      title: document.title,
+      content: extractSimplifiedPage().content,
+      textContent: document.body.textContent,
+      excerpt: getExcerpt(),
+      byline: getAuthor(),
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Simplified page extraction (fallback and for "Simplified" mode)
+function extractSimplifiedPage() {
+  const clone = document.body.cloneNode(true);
 
   // Remove unwanted elements
   const removeSelectors = [
-    'script',
-    'style',
-    'noscript',
-    'iframe',
-    'nav',
-    'header',
-    'footer',
-    'aside',
-    '.nav',
-    '.navigation',
-    '.menu',
-    '.sidebar',
-    '.ad',
-    '.ads',
-    '.advertisement',
-    '.social-share',
-    '.share-buttons',
-    '.comments',
-    '.comment-section',
-    '.related-posts',
-    '.recommended',
-    '[role="navigation"]',
-    '[role="banner"]',
-    '[role="complementary"]',
-    '[aria-hidden="true"]'
+    'script', 'style', 'noscript', 'iframe', 'svg',
+    'nav', 'header', 'footer', 'aside',
+    '.nav', '.navigation', '.menu', '.sidebar',
+    '.ad', '.ads', '.advertisement', '.advert',
+    '.social-share', '.share-buttons', '.social',
+    '.comments', '.comment-section', '.comment-form',
+    '.related-posts', '.recommended', '.suggestions',
+    '.newsletter', '.subscribe', '.popup', '.modal',
+    '[role="navigation"]', '[role="banner"]', '[role="complementary"]',
+    '[aria-hidden="true"]', '[data-ad]', '[data-advertisement]'
   ];
 
   removeSelectors.forEach(selector => {
-    clone.querySelectorAll(selector).forEach(el => el.remove());
+    try {
+      clone.querySelectorAll(selector).forEach(el => el.remove());
+    } catch (e) {}
   });
 
-  // Remove empty elements
-  clone.querySelectorAll('*').forEach(el => {
-    if (!el.textContent.trim() && !el.querySelector('img')) {
+  // Find the main content area
+  const mainSelectors = [
+    'article', 'main', '[role="main"]', '[role="article"]',
+    '.article', '.post', '.entry', '.content', '.story',
+    '#article', '#post', '#content', '#main'
+  ];
+
+  let mainContent = null;
+  for (const selector of mainSelectors) {
+    const el = clone.querySelector(selector);
+    if (el && el.textContent.trim().length > 200) {
+      mainContent = el;
+      break;
+    }
+  }
+
+  const targetElement = mainContent || clone;
+
+  // Clean up the content
+  targetElement.querySelectorAll('*').forEach(el => {
+    // Remove style attributes
+    el.removeAttribute('style');
+    el.removeAttribute('onclick');
+    el.removeAttribute('onload');
+
+    // Keep useful classes, remove others
+    const className = el.className;
+    if (typeof className === 'string' && !className.includes('highlight') && !className.includes('code')) {
+      el.removeAttribute('class');
+    }
+    el.removeAttribute('id');
+  });
+
+  // Remove empty elements (except images)
+  targetElement.querySelectorAll('div, span, p').forEach(el => {
+    if (!el.textContent.trim() && !el.querySelector('img, video, audio')) {
       el.remove();
     }
   });
 
-  // Remove inline styles and classes that might break rendering
-  clone.querySelectorAll('*').forEach(el => {
-    el.removeAttribute('style');
-    el.removeAttribute('class');
-    el.removeAttribute('id');
-  });
+  return {
+    content: targetElement.innerHTML,
+    title: document.title
+  };
+}
 
-  return clone.innerHTML;
+// Get page excerpt from meta tags
+function getExcerpt() {
+  return document.querySelector('meta[name="description"]')?.content ||
+         document.querySelector('meta[property="og:description"]')?.content ||
+         document.querySelector('meta[name="twitter:description"]')?.content ||
+         '';
+}
+
+// Get author from meta tags or common patterns
+function getAuthor() {
+  // Try meta tags first
+  const authorMeta =
+    document.querySelector('meta[name="author"]')?.content ||
+    document.querySelector('meta[property="article:author"]')?.content ||
+    document.querySelector('meta[name="twitter:creator"]')?.content;
+
+  if (authorMeta) return authorMeta;
+
+  // Try common author patterns in the page
+  const authorSelectors = [
+    '[rel="author"]', '.author', '.byline', '.writer',
+    '[itemprop="author"]', '.post-author', '.article-author'
+  ];
+
+  for (const selector of authorSelectors) {
+    const el = document.querySelector(selector);
+    if (el) {
+      const text = el.textContent.trim();
+      if (text.length > 0 && text.length < 100) {
+        return text.replace(/^by\s+/i, '');
+      }
+    }
+  }
+
+  return '';
+}
+
+// Get published date from meta tags
+function getPublishedDate() {
+  return document.querySelector('meta[property="article:published_time"]')?.content ||
+         document.querySelector('meta[name="date"]')?.content ||
+         document.querySelector('time[datetime]')?.getAttribute('datetime') ||
+         '';
 }
 
 // Visual overlay for clip mode
@@ -197,7 +299,6 @@ function hideClipOverlay() {
 
 function highlightElement(e) {
   if (e.target === overlayElement || overlayElement?.contains(e.target)) return;
-
   e.target.classList.add('extrabrain-highlight');
 }
 
@@ -211,7 +312,11 @@ function clipElement(e) {
   e.preventDefault();
   e.stopPropagation();
 
-  const content = cleanContent(e.target);
+  // Clone and clean the selected element
+  const clone = e.target.cloneNode(true);
+  clone.querySelectorAll('script, style').forEach(el => el.remove());
+
+  const content = clone.innerHTML;
 
   // Send to background script
   chrome.runtime.sendMessage({
@@ -248,7 +353,5 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
-// Export for testing
-if (typeof module !== 'undefined') {
-  module.exports = { extractArticle, cleanContent };
-}
+// Log that content script is loaded
+console.log('ExtraBrain Web Clipper content script loaded');

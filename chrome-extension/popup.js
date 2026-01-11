@@ -1,19 +1,75 @@
 // ExtraBrain Web Clipper Popup
+// Uses Readability for article extraction and Turndown for Markdown conversion
 
 const API_URL = 'http://localhost:3847'; // Local API endpoint
 
 let selectedClipType = 'article';
 let pageInfo = null;
 let notebooks = [];
+let turndownService = null;
+
+// Initialize Turndown service for HTML to Markdown conversion
+function initTurndown() {
+  if (typeof TurndownService !== 'undefined') {
+    turndownService = new TurndownService({
+      headingStyle: 'atx',
+      hr: '---',
+      bulletListMarker: '-',
+      codeBlockStyle: 'fenced',
+      fence: '```',
+      emDelimiter: '*',
+      strongDelimiter: '**',
+      linkStyle: 'inlined'
+    });
+
+    // Keep some elements as HTML
+    turndownService.keep(['iframe', 'video', 'audio']);
+
+    // Custom rule for images with better alt text handling
+    turndownService.addRule('images', {
+      filter: 'img',
+      replacement: function (content, node) {
+        const alt = node.getAttribute('alt') || '';
+        const src = node.getAttribute('src') || '';
+        const title = node.getAttribute('title') || '';
+        if (!src) return '';
+        const titlePart = title ? ` "${title}"` : '';
+        return `![${alt}](${src}${titlePart})`;
+      }
+    });
+
+    console.log('Turndown initialized');
+    return true;
+  }
+  console.warn('TurndownService not available');
+  return false;
+}
+
+// Convert HTML to Markdown
+function htmlToMarkdown(html) {
+  if (turndownService) {
+    try {
+      return turndownService.turndown(html);
+    } catch (error) {
+      console.error('Turndown conversion failed:', error);
+      return html; // Return original HTML on failure
+    }
+  }
+  return html; // Return HTML if Turndown not available
+}
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
+  // Initialize Turndown
+  initTurndown();
+
   // Setup clip type selection
   document.querySelectorAll('.clip-option').forEach(option => {
     option.addEventListener('click', () => {
       document.querySelectorAll('.clip-option').forEach(o => o.classList.remove('selected'));
       option.classList.add('selected');
       selectedClipType = option.dataset.type;
+      updateClipTypeUI();
     });
   });
 
@@ -21,9 +77,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   if (tab) {
-    document.getElementById('clip-title').value = tab.title || '';
+    pageInfo = { url: tab.url, title: tab.title, tabId: tab.id };
     document.getElementById('url-preview').textContent = tab.url || '';
-    pageInfo = { url: tab.url, title: tab.title };
+
+    // Get page info from content script for better title
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => ({
+          title: document.title,
+          description: document.querySelector('meta[name="description"]')?.content || '',
+          author: document.querySelector('meta[name="author"]')?.content || ''
+        })
+      });
+      if (result?.result?.title) {
+        document.getElementById('clip-title').value = result.result.title;
+      } else {
+        document.getElementById('clip-title').value = tab.title || '';
+      }
+    } catch (e) {
+      document.getElementById('clip-title').value = tab.title || '';
+    }
   }
 
   // Try to load notebooks from storage or API
@@ -32,6 +106,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup clip button
   document.getElementById('clip-btn').addEventListener('click', handleClip);
 });
+
+function updateClipTypeUI() {
+  const notesField = document.getElementById('notes-field');
+  // Show notes field for all types
+  notesField.style.display = 'block';
+}
 
 async function loadNotebooks() {
   // First try to get from storage
@@ -110,32 +190,48 @@ async function handleClip() {
   try {
     // Get content based on clip type
     let content = '';
+    let extractedTitle = title;
 
     switch (selectedClipType) {
       case 'article':
-        content = await getArticleContent();
+        const articleResult = await getArticleContent();
+        content = articleResult.content;
+        if (articleResult.title && articleResult.title !== document.title) {
+          extractedTitle = articleResult.title;
+          document.getElementById('clip-title').value = extractedTitle;
+        }
         break;
       case 'selection':
         content = await getSelectedContent();
         break;
       case 'full':
-        content = await getFullPageContent();
+        content = await getSimplifiedContent();
         break;
       case 'url':
-        content = `<a href="${pageInfo.url}">${pageInfo.title}</a>`;
+        content = `[${pageInfo.title}](${pageInfo.url})`;
         break;
+    }
+
+    // Convert to Markdown if possible (except for URL which is already markdown)
+    if (selectedClipType !== 'url' && turndownService) {
+      content = htmlToMarkdown(content);
     }
 
     // Add user notes if provided
     if (notes) {
-      content = `<div class="user-notes"><p>${notes}</p></div>\n\n${content}`;
+      content = `> **My Notes:** ${notes}\n\n---\n\n${content}`;
+    }
+
+    // Add source link at the bottom
+    if (selectedClipType !== 'url') {
+      content += `\n\n---\n*Source: [${pageInfo.title}](${pageInfo.url})*`;
     }
 
     // Save to storage for later sync (works offline)
     const clip = {
       id: `clip_${Date.now()}`,
       notebookId,
-      title,
+      title: extractedTitle,
       content,
       sourceUrl: pageInfo.url,
       createdAt: new Date().toISOString(),
@@ -149,7 +245,7 @@ async function handleClip() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notebook_id: notebookId,
-          title,
+          title: extractedTitle,
           content,
           source_url: pageInfo.url
         })
@@ -188,82 +284,155 @@ function showStatus(message, type) {
   status.textContent = message;
 }
 
+// Get article content using Readability (via content script)
 async function getArticleContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: extractArticle
-  });
+  try {
+    // First, inject Readability library
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['lib/Readability.js']
+    });
 
-  return result.result || `<p>Could not extract article content from this page.</p><a href="${pageInfo.url}">View original</a>`;
+    // Then extract article using Readability
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        try {
+          if (typeof Readability === 'undefined') {
+            return { success: false, content: document.body.innerHTML, title: document.title };
+          }
+
+          const documentClone = document.cloneNode(true);
+          const reader = new Readability(documentClone, {
+            charThreshold: 100
+          });
+          const article = reader.parse();
+
+          if (article && article.content) {
+            return {
+              success: true,
+              title: article.title || document.title,
+              content: article.content,
+              excerpt: article.excerpt,
+              byline: article.byline,
+              siteName: article.siteName
+            };
+          }
+
+          return { success: false, content: document.body.innerHTML, title: document.title };
+        } catch (error) {
+          return { success: false, content: document.body.innerHTML, title: document.title, error: error.message };
+        }
+      }
+    });
+
+    if (result?.result?.success) {
+      return result.result;
+    }
+
+    // Fallback to simplified extraction
+    return await getSimplifiedContent();
+
+  } catch (error) {
+    console.error('Article extraction failed:', error);
+    return {
+      content: `<p>Could not extract article content from this page.</p><p><a href="${pageInfo.url}">View original</a></p>`,
+      title: pageInfo.title
+    };
+  }
 }
 
+// Get selected text content
 async function getSelectedContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    func: () => window.getSelection().toString()
+    func: () => {
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) return { text: '', html: '' };
+
+      const text = selection.toString().trim();
+      const container = document.createElement('div');
+      for (let i = 0; i < selection.rangeCount; i++) {
+        container.appendChild(selection.getRangeAt(i).cloneContents());
+      }
+      return { text, html: container.innerHTML };
+    }
   });
 
-  const selection = result.result;
-  if (!selection) {
-    return `<p>No text selected. Please select text on the page and try again.</p>`;
+  const { text, html } = result?.result || { text: '', html: '' };
+
+  if (!text) {
+    return '<p>No text selected. Please select text on the page and try again.</p>';
   }
 
-  return `<blockquote>${selection}</blockquote>\n<p><a href="${pageInfo.url}">Source</a></p>`;
+  // Return HTML if available, otherwise wrapped text
+  return html || `<blockquote>${text}</blockquote>`;
 }
 
-async function getFullPageContent() {
+// Get simplified page content (cleaned up, no Readability)
+async function getSimplifiedContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    func: () => document.body.innerHTML
+    func: () => {
+      const clone = document.body.cloneNode(true);
+
+      // Remove unwanted elements
+      const removeSelectors = [
+        'script', 'style', 'noscript', 'iframe', 'svg',
+        'nav', 'header', 'footer', 'aside',
+        '.nav', '.navigation', '.menu', '.sidebar',
+        '.ad', '.ads', '.advertisement', '.advert',
+        '.social-share', '.share-buttons', '.social',
+        '.comments', '.comment-section', '.comment-form',
+        '.related-posts', '.recommended', '.suggestions',
+        '.newsletter', '.subscribe', '.popup', '.modal',
+        '[role="navigation"]', '[role="banner"]', '[role="complementary"]'
+      ];
+
+      removeSelectors.forEach(selector => {
+        try {
+          clone.querySelectorAll(selector).forEach(el => el.remove());
+        } catch (e) {}
+      });
+
+      // Find main content area
+      const mainSelectors = [
+        'article', 'main', '[role="main"]', '[role="article"]',
+        '.article', '.post', '.entry', '.content', '.story'
+      ];
+
+      let mainContent = null;
+      for (const selector of mainSelectors) {
+        const el = clone.querySelector(selector);
+        if (el && el.textContent.trim().length > 200) {
+          mainContent = el;
+          break;
+        }
+      }
+
+      const targetElement = mainContent || clone;
+
+      // Clean up attributes
+      targetElement.querySelectorAll('*').forEach(el => {
+        el.removeAttribute('style');
+        el.removeAttribute('class');
+        el.removeAttribute('id');
+        el.removeAttribute('onclick');
+        el.removeAttribute('onload');
+      });
+
+      return {
+        content: targetElement.innerHTML,
+        title: document.title
+      };
+    }
   });
 
-  return result.result || '';
-}
-
-// Article extraction function (injected into page)
-function extractArticle() {
-  // Simple article extraction - looks for common article containers
-  const selectors = [
-    'article',
-    '[role="article"]',
-    '.post-content',
-    '.article-content',
-    '.entry-content',
-    '.content-body',
-    'main',
-    '.main-content'
-  ];
-
-  for (const selector of selectors) {
-    const el = document.querySelector(selector);
-    if (el) {
-      // Clean up the content
-      const clone = el.cloneNode(true);
-
-      // Remove scripts, styles, comments, etc.
-      clone.querySelectorAll('script, style, nav, header, footer, aside, .ad, .advertisement, .social-share').forEach(e => e.remove());
-
-      return clone.innerHTML;
-    }
-  }
-
-  // Fallback: get main text content
-  const body = document.body.cloneNode(true);
-  body.querySelectorAll('script, style, nav, header, footer, aside').forEach(e => e.remove());
-
-  // Get text with basic structure
-  const paragraphs = body.querySelectorAll('p');
-  if (paragraphs.length > 0) {
-    return Array.from(paragraphs)
-      .map(p => `<p>${p.textContent}</p>`)
-      .join('\n');
-  }
-
-  return body.textContent || '';
+  return result?.result || { content: '', title: pageInfo.title };
 }
