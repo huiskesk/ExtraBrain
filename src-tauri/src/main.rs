@@ -8,6 +8,7 @@
 
 mod commands;
 mod db;
+mod sanitize;
 mod server;
 
 use db::Database;

@@ -13,6 +13,7 @@ import {
   ImageIcon,
 } from "lucide-react";
 import type { Note } from "../types";
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 
 export default function NoteEditor() {
   const { notes, selectedNoteId, updateNote } = useStore();
@@ -49,6 +50,7 @@ export default function NoteEditor() {
 
   // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
+  const sanitizedContent = useMemo(() => sanitizeHtml(content), [content]);
 
   // Save function
   const saveNote = useCallback(async () => {
@@ -401,7 +403,7 @@ export default function NoteEditor() {
                     prose-table:border-collapse prose-table:w-full
                     prose-th:border prose-th:border-gray-300 prose-th:bg-gray-50 prose-th:px-4 prose-th:py-2 prose-th:text-left
                     prose-td:border prose-td:border-gray-300 prose-td:px-4 prose-td:py-2"
-                  dangerouslySetInnerHTML={{ __html: content }}
+                  dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                 />
               ) : (
                 /* Render Markdown content */

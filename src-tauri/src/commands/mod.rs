@@ -2,6 +2,7 @@ use crate::AppState;
 use crate::db::{
     CreateNotebook, CreateNote, Note, Notebook, UpdateNote, UpdateNotebook,
 };
+use crate::sanitize::sanitize_html;
 use tauri::State;
 
 // Notebook commands
@@ -57,10 +58,13 @@ pub fn create_note(
     state: State<AppState>,
     notebook_id: String,
     title: String,
-    content: String,
+    mut content: String,
     content_type: String,
     source_url: Option<String>,
 ) -> Result<Note, String> {
+    if content_type == "html" {
+        content = sanitize_html(&content);
+    }
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.create_note(CreateNote {
         notebook_id,
@@ -94,10 +98,23 @@ pub fn update_note(
     is_archived: Option<bool>,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
+    let sanitized_content = if let Some(content) = content {
+        let is_html_note = db
+            .get_note(&id)
+            .map(|note| note.content_type == "html")
+            .unwrap_or(false);
+        if is_html_note {
+            Some(sanitize_html(&content))
+        } else {
+            Some(content)
+        }
+    } else {
+        None
+    };
     db.update_note(UpdateNote {
         id,
         title,
-        content,
+        content: sanitized_content,
         is_pinned,
         is_archived,
     })
@@ -157,11 +174,12 @@ pub fn save_web_clip(
     content: String,
     source_url: String,
 ) -> Result<Note, String> {
+    let sanitized_content = sanitize_html(&content);
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.create_note(CreateNote {
         notebook_id,
         title,
-        content,
+        content: sanitized_content,
         content_type: "html".to_string(),
         source_url: Some(source_url),
     })

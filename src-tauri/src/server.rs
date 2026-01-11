@@ -13,6 +13,7 @@ use tauri::{AppHandle, Manager};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::db::{CreateNote, Database, Note, Notebook};
+use crate::sanitize::sanitize_html;
 
 // Shared state type for the HTTP server
 pub type SharedDatabase = Arc<Mutex<Database>>;
@@ -163,10 +164,11 @@ async fn save_clip(
             )
         })?;
 
+        let sanitized_content = sanitize_html(&payload.content);
         db.create_note(CreateNote {
             notebook_id: payload.notebook_id,
             title: payload.title,
-            content: payload.content,
+            content: sanitized_content,
             content_type: "html".to_string(),
             source_url: payload.source_url,
         })
