@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../stores/useStore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,8 @@ import {
   ExternalLink,
   FileText,
   Globe,
+  Save,
+  Check,
 } from "lucide-react";
 import type { Note } from "../types";
 
@@ -23,9 +25,65 @@ export default function NoteEditor() {
   const [content, setContent] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  // Keep track of current note id to detect changes
+  const currentNoteIdRef = useRef<string | null>(null);
+  const hasChangesRef = useRef(false);
+  const titleRef = useRef("");
+  const contentRef = useRef("");
+  const noteIdRef = useRef<string | null>(null);
+
+  // Update refs when state changes
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+    titleRef.current = title;
+    contentRef.current = content;
+    noteIdRef.current = note?.id || null;
+  }, [hasChanges, title, content, note?.id]);
 
   // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
+
+  // Save function
+  const saveNote = useCallback(async () => {
+    if (!noteIdRef.current || !hasChangesRef.current) return;
+
+    setIsSaving(true);
+    try {
+      await updateNote(noteIdRef.current, {
+        title: titleRef.current,
+        content: contentRef.current,
+      });
+      setHasChanges(false);
+      hasChangesRef.current = false;
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+    } catch (error) {
+      console.error("Failed to save note:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [updateNote]);
+
+  // Auto-save when switching to a different note
+  useEffect(() => {
+    const previousNoteId = currentNoteIdRef.current;
+
+    // If we're switching from one note to another, save the previous one
+    if (previousNoteId && previousNoteId !== selectedNoteId && hasChangesRef.current) {
+      // Save the previous note before switching
+      const savePromise = updateNote(previousNoteId, {
+        title: titleRef.current,
+        content: contentRef.current,
+      });
+      savePromise.catch((error) => console.error("Failed to auto-save:", error));
+    }
+
+    // Update the current note id
+    currentNoteIdRef.current = selectedNoteId;
+  }, [selectedNoteId, updateNote]);
 
   // Load note content when selected note changes
   useEffect(() => {
@@ -42,11 +100,15 @@ export default function NoteEditor() {
   const handleToggleMode = useCallback(async () => {
     if (isEditing && hasChanges && note) {
       // Save before switching to view mode
-      await updateNote(note.id, { title, content });
-      setHasChanges(false);
+      await saveNote();
     }
     setIsEditing(!isEditing);
-  }, [isEditing, hasChanges, note, title, content, updateNote]);
+  }, [isEditing, hasChanges, note, saveNote]);
+
+  // Manual save handler
+  const handleSave = useCallback(async () => {
+    await saveNote();
+  }, [saveNote]);
 
   const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value);
@@ -57,6 +119,21 @@ export default function NoteEditor() {
     setContent(e.target.value);
     setHasChanges(true);
   }, []);
+
+  // Keyboard shortcut for save (Cmd/Ctrl + S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (hasChanges) {
+          saveNote();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [hasChanges, saveNote]);
 
   if (!note) {
     return null;
@@ -78,30 +155,54 @@ export default function NoteEditor() {
               <span>Web Clip</span>
             </div>
           )}
-          {hasChanges && (
+          {justSaved && (
+            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
+              <Check size={12} />
+              Saved
+            </span>
+          )}
+          {hasChanges && !justSaved && (
             <span className="text-xs text-amber-500 bg-amber-50 px-2 py-0.5 rounded">
               Unsaved
             </span>
           )}
         </div>
 
-        {/* Simple View/Edit Toggle */}
-        <button
-          onClick={handleToggleMode}
-          className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-        >
-          {isEditing ? (
-            <>
-              <Eye size={16} />
-              View Note
-            </>
-          ) : (
-            <>
-              <Edit3 size={16} />
-              Edit
-            </>
+        <div className="flex items-center gap-2">
+          {/* Save Button */}
+          {isEditing && (
+            <button
+              onClick={handleSave}
+              disabled={!hasChanges || isSaving}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                hasChanges
+                  ? "bg-brand-500 text-white hover:bg-brand-600"
+                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
+              }`}
+            >
+              <Save size={14} />
+              {isSaving ? "Saving..." : "Save"}
+            </button>
           )}
-        </button>
+
+          {/* View/Edit Toggle */}
+          <button
+            onClick={handleToggleMode}
+            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+          >
+            {isEditing ? (
+              <>
+                <Eye size={16} />
+                View Note
+              </>
+            ) : (
+              <>
+                <Edit3 size={16} />
+                Edit
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Content Area */}

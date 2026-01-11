@@ -1,9 +1,8 @@
 use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use std::path::PathBuf;
-use tauri::api::path::app_data_dir;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Notebook {
@@ -72,17 +71,22 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Result<Self> {
-        // Get app data directory
-        let config = tauri::Config::default();
-        let data_dir = app_data_dir(&config)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("ExtraBrain");
+        // Get a reliable data directory path
+        // Use home directory with .extrabrain folder for consistency
+        let home_dir = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_else(|_| ".".to_string());
+
+        let data_dir = PathBuf::from(home_dir).join(".extrabrain");
 
         // Create data directory if it doesn't exist
         std::fs::create_dir_all(&data_dir).ok();
         std::fs::create_dir_all(data_dir.join("pdfs")).ok();
 
         let db_path = data_dir.join("extrabrain.db");
+
+        println!("Database path: {:?}", db_path);
+
         let conn = Connection::open(&db_path)?;
 
         let db = Database { conn, data_dir };
@@ -163,13 +167,14 @@ impl Database {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     Uuid::new_v4().to_string(),
-                    "My Notes",
+                    "Main Notebook",
                     "#22c55e",
                     now,
                     now,
                     0
                 ],
             )?;
+            println!("Created default 'Main Notebook'");
         }
         Ok(())
     }
@@ -192,6 +197,8 @@ impl Database {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![id, input.name, input.color, input.icon, now, now, max_order + 1],
         )?;
+
+        println!("Created notebook: {} (id: {})", input.name, id);
 
         Ok(Notebook {
             id,
@@ -222,7 +229,9 @@ impl Database {
             })
         })?;
 
-        notebooks.collect()
+        let result: Vec<Notebook> = notebooks.collect::<Result<Vec<_>>>()?;
+        println!("Loaded {} notebooks from database", result.len());
+        Ok(result)
     }
 
     pub fn update_notebook(&self, input: UpdateNotebook) -> Result<()> {
@@ -260,6 +269,7 @@ impl Database {
         self.conn.execute("DELETE FROM notes WHERE notebook_id = ?1", params![id])?;
         // Then delete the notebook
         self.conn.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        println!("Deleted notebook: {}", id);
         Ok(())
     }
 
@@ -282,6 +292,8 @@ impl Database {
                 now
             ],
         )?;
+
+        println!("Created note: {} in notebook {}", input.title, input.notebook_id);
 
         Ok(Note {
             id,
@@ -353,13 +365,13 @@ impl Database {
     pub fn update_note(&self, input: UpdateNote) -> Result<()> {
         let now = Utc::now().to_rfc3339();
 
-        if let Some(title) = input.title {
+        if let Some(title) = &input.title {
             self.conn.execute(
                 "UPDATE notes SET title = ?1, updated_at = ?2 WHERE id = ?3",
                 params![title, now, input.id],
             )?;
         }
-        if let Some(content) = input.content {
+        if let Some(content) = &input.content {
             self.conn.execute(
                 "UPDATE notes SET content = ?1, updated_at = ?2 WHERE id = ?3",
                 params![content, now, input.id],
@@ -377,6 +389,8 @@ impl Database {
                 params![is_archived, now, input.id],
             )?;
         }
+
+        println!("Updated note: {}", input.id);
         Ok(())
     }
 
@@ -389,15 +403,17 @@ impl Database {
             }
         }
         self.conn.execute("DELETE FROM notes WHERE id = ?1", params![id])?;
+        println!("Deleted note: {}", id);
         Ok(())
     }
 
     pub fn move_note_to_notebook(&self, note_id: &str, notebook_id: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
-        self.conn.execute(
+        let rows_affected = self.conn.execute(
             "UPDATE notes SET notebook_id = ?1, updated_at = ?2 WHERE id = ?3",
             params![notebook_id, now, note_id],
         )?;
+        println!("Moved note {} to notebook {} (rows affected: {})", note_id, notebook_id, rows_affected);
         Ok(())
     }
 
