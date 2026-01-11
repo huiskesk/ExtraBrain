@@ -33,6 +33,7 @@ export default function Sidebar() {
     updateNotebook,
     deleteNotebook,
     importPdf,
+    moveNoteToNotebook,
   } = useStore();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -41,6 +42,7 @@ export default function Sidebar() {
   const [editingName, setEditingName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const handleCreateNotebook = async () => {
     if (newNotebookName.trim()) {
@@ -78,6 +80,29 @@ export default function Sidebar() {
       const fileData = await readBinaryFile(selected);
       const fileName = selected.split("/").pop() || "document.pdf";
       await importPdf(selectedNotebookId, fileName, Array.from(fileData));
+    }
+  };
+
+  // Drag and drop handlers for notebooks
+  const handleDragOver = (e: React.DragEvent, notebookId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (notebookId !== selectedNotebookId) {
+      setDragOverId(notebookId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverId(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, notebookId: string) => {
+    e.preventDefault();
+    setDragOverId(null);
+
+    const noteId = e.dataTransfer.getData('noteId');
+    if (noteId && notebookId !== selectedNotebookId) {
+      await moveNoteToNotebook(noteId, notebookId);
     }
   };
 
@@ -122,12 +147,17 @@ export default function Sidebar() {
               {notebooks.map((notebook) => (
                 <div
                   key={notebook.id}
-                  className={`group relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors sidebar-item ${
+                  className={`group relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all sidebar-item ${
                     selectedNotebookId === notebook.id
                       ? "bg-sidebar-active"
+                      : dragOverId === notebook.id
+                      ? "bg-brand-500/30 ring-2 ring-brand-500"
                       : "hover:bg-sidebar-hover"
                   }`}
                   onClick={() => selectNotebook(notebook.id)}
+                  onDragOver={(e) => handleDragOver(e, notebook.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, notebook.id)}
                 >
                   <div
                     className="w-3 h-3 rounded-sm flex-shrink-0"
@@ -167,7 +197,7 @@ export default function Sidebar() {
 
                   {/* Dropdown Menu */}
                   {menuOpenId === notebook.id && (
-                    <div className="absolute right-0 top-full mt-1 w-40 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-1 z-10">
+                    <div className="absolute right-0 top-full mt-1 w-40 bg-gray-800 rounded-lg shadow-xl border border-gray-700 py-1 z-50">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
