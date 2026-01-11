@@ -10,6 +10,7 @@ import {
   Globe,
   Save,
   Check,
+  ImageIcon,
 } from "lucide-react";
 import type { Note } from "../types";
 
@@ -27,6 +28,7 @@ export default function NoteEditor() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
 
   // Keep track of current note id to detect changes
   const currentNoteIdRef = useRef<string | null>(null);
@@ -120,6 +122,63 @@ export default function NoteEditor() {
     setHasChanges(true);
   }, []);
 
+  // Image drag and drop handlers
+  const handleImageDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Check if dragging files (not internal drag)
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDraggingImage(true);
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }, []);
+
+  const handleImageDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingImage(false);
+  }, []);
+
+  const handleImageDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingImage(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file =>
+      file.type.startsWith('image/') &&
+      (file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/gif' || file.type === 'image/webp')
+    );
+
+    if (imageFiles.length === 0) return;
+
+    // Process each image file
+    for (const file of imageFiles) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Data = event.target?.result as string;
+        if (base64Data) {
+          // Insert image based on content type
+          const isHtmlContent = isWebClip || note?.content_type === "html";
+
+          let imageMarkup: string;
+          if (isHtmlContent) {
+            // HTML format
+            imageMarkup = `<p><img src="${base64Data}" alt="${file.name}" style="max-width: 100%; height: auto;" /></p>`;
+          } else {
+            // Markdown format
+            imageMarkup = `\n![${file.name}](${base64Data})\n`;
+          }
+
+          setContent(prev => prev + imageMarkup);
+          setHasChanges(true);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  }, [isWebClip, note?.content_type]);
+
   // Keyboard shortcut for save (Cmd/Ctrl + S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -145,7 +204,22 @@ export default function NoteEditor() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
+    <div
+      className="flex-1 flex flex-col bg-white h-full overflow-hidden relative"
+      onDragOver={handleImageDragOver}
+      onDragLeave={handleImageDragLeave}
+      onDrop={handleImageDrop}
+    >
+      {/* Image Drop Zone Overlay */}
+      {isDraggingImage && (
+        <div className="absolute inset-0 bg-brand-500/20 border-4 border-dashed border-brand-500 z-50 flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-xl px-8 py-6 shadow-xl flex items-center gap-3">
+            <ImageIcon size={32} className="text-brand-500" />
+            <span className="text-lg font-medium text-gray-700">Drop image here</span>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center gap-2">

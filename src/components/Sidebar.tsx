@@ -34,6 +34,7 @@ export default function Sidebar() {
     deleteNotebook,
     importPdf,
     moveNoteToNotebook,
+    loadNotes,
   } = useStore();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -86,23 +87,45 @@ export default function Sidebar() {
   // Drag and drop handlers for notebooks
   const handleDragOver = (e: React.DragEvent, notebookId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
+    // Allow dragging to any notebook except the currently selected one
     if (notebookId !== selectedNotebookId) {
       setDragOverId(notebookId);
     }
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setDragOverId(null);
   };
 
   const handleDrop = async (e: React.DragEvent, notebookId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverId(null);
 
-    const noteId = e.dataTransfer.getData('noteId');
+    // Try both data formats
+    const noteId = e.dataTransfer.getData('noteId') || e.dataTransfer.getData('text/plain');
+
+    console.log('Drop event - noteId:', noteId, 'to notebook:', notebookId);
+    console.log('Current notebook:', selectedNotebookId);
+
     if (noteId && notebookId !== selectedNotebookId) {
-      await moveNoteToNotebook(noteId, notebookId);
+      console.log('Executing move...');
+      try {
+        await moveNoteToNotebook(noteId, notebookId);
+        console.log('Move completed successfully');
+        // Refresh the current notebook's notes
+        if (selectedNotebookId) {
+          await loadNotes(selectedNotebookId);
+        }
+      } catch (error) {
+        console.error('Move failed:', error);
+      }
+    } else {
+      console.log('Move skipped - noteId:', noteId, 'same notebook:', notebookId === selectedNotebookId);
     }
   };
 
@@ -151,7 +174,7 @@ export default function Sidebar() {
                     selectedNotebookId === notebook.id
                       ? "bg-sidebar-active"
                       : dragOverId === notebook.id
-                      ? "bg-brand-500/30 ring-2 ring-brand-500"
+                      ? "bg-brand-500/30 ring-2 ring-brand-500 ring-inset"
                       : "hover:bg-sidebar-hover"
                   }`}
                   onClick={() => selectNotebook(notebook.id)}

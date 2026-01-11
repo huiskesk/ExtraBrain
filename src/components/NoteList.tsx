@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { Note } from "../types";
 
 export default function NoteList() {
@@ -33,6 +34,7 @@ export default function NoteList() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [moveMenuNoteId, setMoveMenuNoteId] = useState<string | null>(null);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Close menus when clicking outside or pressing Escape
   useEffect(() => {
@@ -42,6 +44,7 @@ export default function NoteList() {
         if (!target.closest('.note-menu') && !target.closest('.note-menu-trigger')) {
           setMenuOpenId(null);
           setMoveMenuNoteId(null);
+          setMenuPosition(null);
         }
       }
     };
@@ -50,6 +53,7 @@ export default function NoteList() {
       if (e.key === 'Escape' && (menuOpenId || moveMenuNoteId)) {
         setMenuOpenId(null);
         setMoveMenuNoteId(null);
+        setMenuPosition(null);
       }
     };
 
@@ -70,26 +74,41 @@ export default function NoteList() {
   const handleDeleteNote = async (id: string) => {
     await deleteNote(id);
     setMenuOpenId(null);
+    setMenuPosition(null);
   };
 
   const handleTogglePin = async (note: Note) => {
     await updateNote(note.id, { is_pinned: !note.is_pinned });
     setMenuOpenId(null);
+    setMenuPosition(null);
   };
 
   const handleMoveToNotebook = async (noteId: string, notebookId: string) => {
+    console.log('Moving note', noteId, 'to notebook', notebookId);
     await moveNoteToNotebook(noteId, notebookId);
     setMoveMenuNoteId(null);
     setMenuOpenId(null);
+    setMenuPosition(null);
+  };
+
+  const handleMenuOpen = (e: React.MouseEvent, noteId: string) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenuPosition({ x: rect.right - 192, y: rect.bottom + 4 }); // 192 = menu width (w-48)
+    setMoveMenuNoteId(null);
+    setMenuOpenId(menuOpenId === noteId ? null : noteId);
   };
 
   const handleDragStart = (e: React.DragEvent, noteId: string) => {
+    console.log('Drag start:', noteId);
+    e.dataTransfer.setData('text/plain', noteId);
     e.dataTransfer.setData('noteId', noteId);
     e.dataTransfer.effectAllowed = 'move';
     setDraggedNoteId(noteId);
   };
 
   const handleDragEnd = () => {
+    console.log('Drag end');
     setDraggedNoteId(null);
   };
 
@@ -116,6 +135,9 @@ export default function NoteList() {
 
   const pinnedNotes = notes.filter((n) => n.is_pinned);
   const unpinnedNotes = notes.filter((n) => !n.is_pinned);
+
+  // Find the note for the open menu
+  const menuNote = menuOpenId ? notes.find(n => n.id === menuOpenId) : null;
 
   if (isLoading) {
     return (
@@ -180,15 +202,8 @@ export default function NoteList() {
                     onDragEnd={handleDragEnd}
                     getContentTypeIcon={getContentTypeIcon}
                     getPreviewText={getPreviewText}
-                    menuOpenId={menuOpenId}
-                    setMenuOpenId={setMenuOpenId}
-                    onDelete={handleDeleteNote}
-                    onTogglePin={handleTogglePin}
-                    moveMenuNoteId={moveMenuNoteId}
-                    setMoveMenuNoteId={setMoveMenuNoteId}
-                    notebooks={notebooks}
-                    onMoveToNotebook={handleMoveToNotebook}
-                    currentNotebookId={selectedNotebookId}
+                    onMenuOpen={handleMenuOpen}
+                    isMenuOpen={menuOpenId === note.id}
                   />
                 ))}
               </div>
@@ -212,21 +227,30 @@ export default function NoteList() {
                   onDragEnd={handleDragEnd}
                   getContentTypeIcon={getContentTypeIcon}
                   getPreviewText={getPreviewText}
-                  menuOpenId={menuOpenId}
-                  setMenuOpenId={setMenuOpenId}
-                  onDelete={handleDeleteNote}
-                  onTogglePin={handleTogglePin}
-                  moveMenuNoteId={moveMenuNoteId}
-                  setMoveMenuNoteId={setMoveMenuNoteId}
-                  notebooks={notebooks}
-                  onMoveToNotebook={handleMoveToNotebook}
-                  currentNotebookId={selectedNotebookId}
+                  onMenuOpen={handleMenuOpen}
+                  isMenuOpen={menuOpenId === note.id}
                 />
               ))}
             </div>
           </>
         )}
       </div>
+
+      {/* Menu Portal - Rendered at document body level for proper z-index */}
+      {menuOpenId && menuNote && menuPosition && createPortal(
+        <NoteMenu
+          note={menuNote}
+          position={menuPosition}
+          onTogglePin={handleTogglePin}
+          onDelete={handleDeleteNote}
+          onMoveToNotebook={handleMoveToNotebook}
+          notebooks={notebooks}
+          currentNotebookId={selectedNotebookId}
+          moveMenuOpen={moveMenuNoteId === menuNote.id}
+          onToggleMoveMenu={() => setMoveMenuNoteId(moveMenuNoteId === menuNote.id ? null : menuNote.id)}
+        />,
+        document.body
+      )}
     </div>
   );
 }
@@ -240,15 +264,8 @@ interface NoteCardProps {
   onDragEnd: () => void;
   getContentTypeIcon: (note: Note) => React.ReactNode;
   getPreviewText: (note: Note) => string;
-  menuOpenId: string | null;
-  setMenuOpenId: (id: string | null) => void;
-  onDelete: (id: string) => void;
-  onTogglePin: (note: Note) => void;
-  moveMenuNoteId: string | null;
-  setMoveMenuNoteId: (id: string | null) => void;
-  notebooks: Array<{ id: string; name: string; color: string | null }>;
-  onMoveToNotebook: (noteId: string, notebookId: string) => void;
-  currentNotebookId: string | null;
+  onMenuOpen: (e: React.MouseEvent, noteId: string) => void;
+  isMenuOpen: boolean;
 }
 
 function NoteCard({
@@ -260,20 +277,9 @@ function NoteCard({
   onDragEnd,
   getContentTypeIcon,
   getPreviewText,
-  menuOpenId,
-  setMenuOpenId,
-  onDelete,
-  onTogglePin,
-  moveMenuNoteId,
-  setMoveMenuNoteId,
-  notebooks,
-  onMoveToNotebook,
-  currentNotebookId,
+  onMenuOpen,
+  isMenuOpen,
 }: NoteCardProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const isMenuOpen = menuOpenId === note.id;
-  const isMoveMenuOpen = moveMenuNoteId === note.id;
-
   return (
     <div
       draggable
@@ -317,91 +323,133 @@ function NoteCard({
 
         {/* Menu Button */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setMoveMenuNoteId(null);
-            setMenuOpenId(isMenuOpen ? null : note.id);
-          }}
-          className="note-menu-trigger opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
+          onClick={(e) => onMenuOpen(e, note.id)}
+          className={`note-menu-trigger p-1 hover:bg-gray-200 rounded transition-opacity ${
+            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
         >
           <MoreVertical size={14} className="text-gray-500" />
         </button>
       </div>
+    </div>
+  );
+}
 
-      {/* Dropdown Menu */}
-      {isMenuOpen && (
-        <div
-          ref={menuRef}
-          className="note-menu absolute right-2 top-12 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50"
-          onClick={(e) => e.stopPropagation()}
+interface NoteMenuProps {
+  note: Note;
+  position: { x: number; y: number };
+  onTogglePin: (note: Note) => void;
+  onDelete: (id: string) => void;
+  onMoveToNotebook: (noteId: string, notebookId: string) => void;
+  notebooks: Array<{ id: string; name: string; color: string | null }>;
+  currentNotebookId: string | null;
+  moveMenuOpen: boolean;
+  onToggleMoveMenu: () => void;
+}
+
+function NoteMenu({
+  note,
+  position,
+  onTogglePin,
+  onDelete,
+  onMoveToNotebook,
+  notebooks,
+  currentNotebookId,
+  moveMenuOpen,
+  onToggleMoveMenu,
+}: NoteMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Adjust position if menu would go off screen
+  const adjustedPosition = { ...position };
+  if (typeof window !== 'undefined') {
+    const menuWidth = 192; // w-48
+    const menuHeight = 150; // approximate
+    if (position.x + menuWidth > window.innerWidth) {
+      adjustedPosition.x = window.innerWidth - menuWidth - 8;
+    }
+    if (position.y + menuHeight > window.innerHeight) {
+      adjustedPosition.y = position.y - menuHeight - 40;
+    }
+  }
+
+  return (
+    <div
+      ref={menuRef}
+      className="note-menu fixed w-48 bg-white rounded-lg shadow-2xl border border-gray-200 py-1"
+      style={{
+        left: adjustedPosition.x,
+        top: adjustedPosition.y,
+        zIndex: 9999,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={() => onTogglePin(note)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+      >
+        <Pin size={14} />
+        {note.is_pinned ? "Unpin" : "Pin to top"}
+      </button>
+
+      {/* Move to submenu trigger */}
+      <div className="relative">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleMoveMenu();
+          }}
+          className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
         >
-          <button
-            onClick={() => onTogglePin(note)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          <span className="flex items-center gap-2">
+            <FolderInput size={14} />
+            Move to
+          </span>
+          <ChevronRight size={14} />
+        </button>
+
+        {/* Move to submenu - positioned to the left to avoid being hidden */}
+        {moveMenuOpen && (
+          <div
+            className="note-menu absolute right-full top-0 mr-1 w-48 bg-white rounded-lg shadow-2xl border border-gray-200 py-1"
+            style={{ zIndex: 10000 }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <Pin size={14} />
-            {note.is_pinned ? "Unpin" : "Pin to top"}
-          </button>
-
-          {/* Move to submenu trigger */}
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setMoveMenuNoteId(isMoveMenuOpen ? null : note.id);
-              }}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-            >
-              <span className="flex items-center gap-2">
-                <FolderInput size={14} />
-                Move to
-              </span>
-              <ChevronRight size={14} />
-            </button>
-
-            {/* Move to submenu */}
-            {isMoveMenuOpen && (
-              <div
-                className="note-menu absolute left-full top-0 ml-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase border-b border-gray-100">
-                  Move to Notebook
-                </div>
-                {notebooks
-                  .filter((nb) => nb.id !== currentNotebookId)
-                  .map((nb) => (
-                    <button
-                      key={nb.id}
-                      onClick={() => onMoveToNotebook(note.id, nb.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      <div
-                        className="w-3 h-3 rounded-sm flex-shrink-0"
-                        style={{ backgroundColor: nb.color || "#22c55e" }}
-                      />
-                      <span className="truncate">{nb.name}</span>
-                    </button>
-                  ))}
-                {notebooks.filter((nb) => nb.id !== currentNotebookId).length === 0 && (
-                  <div className="px-3 py-2 text-sm text-gray-400 italic">
-                    No other notebooks
-                  </div>
-                )}
+            <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase border-b border-gray-100 bg-gray-50">
+              Move to Notebook
+            </div>
+            {notebooks
+              .filter((nb) => nb.id !== currentNotebookId)
+              .map((nb) => (
+                <button
+                  key={nb.id}
+                  onClick={() => onMoveToNotebook(note.id, nb.id)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <div
+                    className="w-3 h-3 rounded-sm flex-shrink-0"
+                    style={{ backgroundColor: nb.color || "#22c55e" }}
+                  />
+                  <span className="truncate">{nb.name}</span>
+                </button>
+              ))}
+            {notebooks.filter((nb) => nb.id !== currentNotebookId).length === 0 && (
+              <div className="px-3 py-2 text-sm text-gray-400 italic">
+                No other notebooks
               </div>
             )}
           </div>
+        )}
+      </div>
 
-          <div className="border-t border-gray-100 my-1" />
-          <button
-            onClick={() => onDelete(note.id)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
-        </div>
-      )}
+      <div className="border-t border-gray-100 my-1" />
+      <button
+        onClick={() => onDelete(note.id)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+      >
+        <Trash2 size={14} />
+        Delete
+      </button>
     </div>
   );
 }
