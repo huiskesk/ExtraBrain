@@ -8,7 +8,6 @@ import {
   Edit2,
   ChevronDown,
   ChevronRight,
-  FileText,
   Upload,
 } from "lucide-react";
 import { open } from "@tauri-apps/api/dialog";
@@ -83,31 +82,33 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-64 bg-sidebar-bg text-sidebar-text flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">EB</span>
+    <div className="w-64 h-screen bg-sidebar-bg text-sidebar-text flex flex-col flex-shrink-0">
+      {/* Sticky Header */}
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-sidebar-bg">
+        <div className="p-4 border-b border-gray-700">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
+              <span className="text-white font-bold text-sm">EB</span>
+            </div>
+            <span className="font-semibold text-lg">ExtraBrain</span>
           </div>
-          <span className="font-semibold text-lg">ExtraBrain</span>
+        </div>
+
+        {/* Actions */}
+        <div className="p-3 space-y-1 border-b border-gray-700/50">
+          <button
+            onClick={handleImportPdf}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+          >
+            <Upload size={16} />
+            <span>Import PDF</span>
+          </button>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="p-3 space-y-1">
-        <button
-          onClick={handleImportPdf}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
-        >
-          <Upload size={16} />
-          <span>Import PDF</span>
-        </button>
-      </div>
-
-      {/* Notebooks Section */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-3">
+      {/* Scrollable Notebooks Section */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="px-3 py-2">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-muted uppercase tracking-wider"
@@ -233,8 +234,8 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="p-3 border-t border-gray-700">
+      {/* Sticky Footer */}
+      <div className="flex-shrink-0 p-3 border-t border-gray-700 bg-sidebar-bg">
         <div className="text-xs text-sidebar-muted">
           {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
         </div>

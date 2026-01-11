@@ -93,9 +93,9 @@ export default function NoteList() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+    <div className="flex flex-col h-full">
+      {/* Sticky Header */}
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-white px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">
           {isSearching ? "Search Results" : `${notes.length} Notes`}
         </span>
@@ -110,8 +110,8 @@ export default function NoteList() {
         )}
       </div>
 
-      {/* Note List */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Scrollable Note List */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {notes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-4">
             <FileText size={40} className="text-gray-300 mb-3" />

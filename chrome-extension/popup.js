@@ -22,23 +22,100 @@ function initTurndown() {
       linkStyle: 'inlined'
     });
 
-    // Keep some elements as HTML
+    // Keep some elements as HTML (for embedding)
     turndownService.keep(['iframe', 'video', 'audio']);
 
-    // Custom rule for images with better alt text handling
+    // Custom rule for images - KEEP images with absolute URLs
     turndownService.addRule('images', {
       filter: 'img',
       replacement: function (content, node) {
+        let src = node.getAttribute('src') || '';
         const alt = node.getAttribute('alt') || '';
-        const src = node.getAttribute('src') || '';
         const title = node.getAttribute('title') || '';
+
+        // Skip tiny tracking pixels and empty images
+        const width = node.getAttribute('width');
+        const height = node.getAttribute('height');
+        if ((width && parseInt(width) < 10) || (height && parseInt(height) < 10)) {
+          return '';
+        }
+
+        // Skip data URIs that are too small (likely tracking pixels)
+        if (src.startsWith('data:') && src.length < 200) {
+          return '';
+        }
+
+        // Convert relative URLs to absolute
+        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+          try {
+            src = new URL(src, pageInfo?.url || window.location.href).href;
+          } catch (e) {
+            // If URL parsing fails, keep original
+          }
+        }
+
         if (!src) return '';
+
         const titlePart = title ? ` "${title}"` : '';
-        return `![${alt}](${src}${titlePart})`;
+        return `\n\n![${alt}](${src}${titlePart})\n\n`;
       }
     });
 
-    console.log('Turndown initialized');
+    // Custom rule for figures (image with caption)
+    turndownService.addRule('figure', {
+      filter: 'figure',
+      replacement: function (content, node) {
+        const img = node.querySelector('img');
+        const figcaption = node.querySelector('figcaption');
+
+        if (!img) return content;
+
+        let src = img.getAttribute('src') || '';
+        const alt = img.getAttribute('alt') || figcaption?.textContent || '';
+
+        // Convert relative URLs to absolute
+        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+          try {
+            src = new URL(src, pageInfo?.url || window.location.href).href;
+          } catch (e) {}
+        }
+
+        if (!src) return '';
+
+        let result = `\n\n![${alt}](${src})`;
+        if (figcaption && figcaption.textContent.trim()) {
+          result += `\n*${figcaption.textContent.trim()}*`;
+        }
+        result += '\n\n';
+        return result;
+      }
+    });
+
+    // Custom rule for links - convert relative to absolute
+    turndownService.addRule('links', {
+      filter: 'a',
+      replacement: function (content, node) {
+        let href = node.getAttribute('href') || '';
+        const title = node.getAttribute('title') || '';
+
+        // Skip empty links or javascript links
+        if (!href || href.startsWith('javascript:') || href === '#') {
+          return content;
+        }
+
+        // Convert relative URLs to absolute
+        if (!href.startsWith('http') && !href.startsWith('mailto:')) {
+          try {
+            href = new URL(href, pageInfo?.url || window.location.href).href;
+          } catch (e) {}
+        }
+
+        const titlePart = title ? ` "${title}"` : '';
+        return `[${content}](${href}${titlePart})`;
+      }
+    });
+
+    console.log('Turndown initialized with image preservation');
     return true;
   }
   console.warn('TurndownService not available');
@@ -418,11 +495,14 @@ async function getSimplifiedContent() {
 
       const targetElement = mainContent || clone;
 
-      // Clean up attributes
+      // Clean up attributes but KEEP images
       targetElement.querySelectorAll('*').forEach(el => {
-        el.removeAttribute('style');
-        el.removeAttribute('class');
-        el.removeAttribute('id');
+        // Keep src, alt, title for images
+        if (el.tagName !== 'IMG' && el.tagName !== 'A') {
+          el.removeAttribute('style');
+          el.removeAttribute('class');
+          el.removeAttribute('id');
+        }
         el.removeAttribute('onclick');
         el.removeAttribute('onload');
       });

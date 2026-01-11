@@ -28,18 +28,24 @@ function App() {
   }, [loadNotebooks, setupEventListeners]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sidebar - Notebooks */}
+    <div className="flex h-screen w-screen overflow-hidden bg-gray-100">
+      {/* Sidebar - Notebooks - Fixed width, full height, independent scroll */}
       <Sidebar />
 
-      {/* Note List */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-        <SearchBar />
-        <NoteList />
+      {/* Note List - Fixed width, full height, independent scroll */}
+      <div className="w-80 h-screen flex flex-col bg-white border-r border-gray-200 flex-shrink-0">
+        {/* Sticky search header */}
+        <div className="flex-shrink-0 sticky top-0 z-10 bg-white">
+          <SearchBar />
+        </div>
+        {/* Scrollable note list */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <NoteList />
+        </div>
       </div>
 
-      {/* Note Editor */}
-      <div className="flex-1 flex flex-col">
+      {/* Note Editor - Flexible width, full height, independent scroll */}
+      <div className="flex-1 h-screen flex flex-col min-w-0 overflow-hidden">
         {selectedNoteId ? (
           <NoteEditor />
         ) : (
