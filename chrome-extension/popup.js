@@ -1,145 +1,14 @@
 // ExtraBrain Web Clipper Popup
-// Uses Readability for article extraction and Turndown for Markdown conversion
+// Uses Readability for article extraction - saves clean HTML directly
 
 const API_URL = 'http://localhost:3847'; // Local API endpoint
 
 let selectedClipType = 'article';
 let pageInfo = null;
 let notebooks = [];
-let turndownService = null;
-
-// Initialize Turndown service for HTML to Markdown conversion
-function initTurndown() {
-  if (typeof TurndownService !== 'undefined') {
-    turndownService = new TurndownService({
-      headingStyle: 'atx',
-      hr: '---',
-      bulletListMarker: '-',
-      codeBlockStyle: 'fenced',
-      fence: '```',
-      emDelimiter: '*',
-      strongDelimiter: '**',
-      linkStyle: 'inlined'
-    });
-
-    // Keep some elements as HTML (for embedding)
-    turndownService.keep(['iframe', 'video', 'audio']);
-
-    // Custom rule for images - KEEP images with absolute URLs
-    turndownService.addRule('images', {
-      filter: 'img',
-      replacement: function (content, node) {
-        let src = node.getAttribute('src') || '';
-        const alt = node.getAttribute('alt') || '';
-        const title = node.getAttribute('title') || '';
-
-        // Skip tiny tracking pixels and empty images
-        const width = node.getAttribute('width');
-        const height = node.getAttribute('height');
-        if ((width && parseInt(width) < 10) || (height && parseInt(height) < 10)) {
-          return '';
-        }
-
-        // Skip data URIs that are too small (likely tracking pixels)
-        if (src.startsWith('data:') && src.length < 200) {
-          return '';
-        }
-
-        // Convert relative URLs to absolute
-        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-          try {
-            src = new URL(src, pageInfo?.url || window.location.href).href;
-          } catch (e) {
-            // If URL parsing fails, keep original
-          }
-        }
-
-        if (!src) return '';
-
-        const titlePart = title ? ` "${title}"` : '';
-        return `\n\n![${alt}](${src}${titlePart})\n\n`;
-      }
-    });
-
-    // Custom rule for figures (image with caption)
-    turndownService.addRule('figure', {
-      filter: 'figure',
-      replacement: function (content, node) {
-        const img = node.querySelector('img');
-        const figcaption = node.querySelector('figcaption');
-
-        if (!img) return content;
-
-        let src = img.getAttribute('src') || '';
-        const alt = img.getAttribute('alt') || figcaption?.textContent || '';
-
-        // Convert relative URLs to absolute
-        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-          try {
-            src = new URL(src, pageInfo?.url || window.location.href).href;
-          } catch (e) {}
-        }
-
-        if (!src) return '';
-
-        let result = `\n\n![${alt}](${src})`;
-        if (figcaption && figcaption.textContent.trim()) {
-          result += `\n*${figcaption.textContent.trim()}*`;
-        }
-        result += '\n\n';
-        return result;
-      }
-    });
-
-    // Custom rule for links - convert relative to absolute
-    turndownService.addRule('links', {
-      filter: 'a',
-      replacement: function (content, node) {
-        let href = node.getAttribute('href') || '';
-        const title = node.getAttribute('title') || '';
-
-        // Skip empty links or javascript links
-        if (!href || href.startsWith('javascript:') || href === '#') {
-          return content;
-        }
-
-        // Convert relative URLs to absolute
-        if (!href.startsWith('http') && !href.startsWith('mailto:')) {
-          try {
-            href = new URL(href, pageInfo?.url || window.location.href).href;
-          } catch (e) {}
-        }
-
-        const titlePart = title ? ` "${title}"` : '';
-        return `[${content}](${href}${titlePart})`;
-      }
-    });
-
-    console.log('Turndown initialized with image preservation');
-    return true;
-  }
-  console.warn('TurndownService not available');
-  return false;
-}
-
-// Convert HTML to Markdown
-function htmlToMarkdown(html) {
-  if (turndownService) {
-    try {
-      return turndownService.turndown(html);
-    } catch (error) {
-      console.error('Turndown conversion failed:', error);
-      return html; // Return original HTML on failure
-    }
-  }
-  return html; // Return HTML if Turndown not available
-}
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
-  // Initialize Turndown
-  initTurndown();
-
   // Setup clip type selection
   document.querySelectorAll('.clip-option').forEach(option => {
     option.addEventListener('click', () => {
@@ -186,12 +55,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function updateClipTypeUI() {
   const notesField = document.getElementById('notes-field');
-  // Show notes field for all types
   notesField.style.display = 'block';
 }
 
 async function loadNotebooks() {
-  // First try to get from storage
   const stored = await chrome.storage.local.get(['notebooks', 'lastSync']);
 
   if (stored.notebooks && stored.notebooks.length > 0) {
@@ -199,7 +66,6 @@ async function loadNotebooks() {
     updateNotebookSelect();
   }
 
-  // Try to fetch from API (will fail if app not running, which is okay)
   try {
     const response = await fetch(`${API_URL}/notebooks`, {
       method: 'GET',
@@ -214,9 +80,7 @@ async function loadNotebooks() {
       document.getElementById('setup-content').style.display = 'none';
     }
   } catch (error) {
-    // API not available - use cached notebooks or show setup
     if (notebooks.length === 0) {
-      // Create a default notebook entry for offline use
       notebooks = [{ id: 'default', name: 'My Notes', color: '#22c55e' }];
       updateNotebookSelect();
     }
@@ -235,7 +99,6 @@ function updateNotebookSelect() {
     select.appendChild(option);
   });
 
-  // Auto-select first notebook
   if (notebooks.length > 0) {
     select.value = notebooks[0].id;
   }
@@ -259,15 +122,14 @@ async function handleClip() {
     return;
   }
 
-  // Show loading state
   btn.disabled = true;
   btnText.innerHTML = '<span class="loading"></span>';
   status.innerHTML = '';
 
   try {
-    // Get content based on clip type
     let content = '';
     let extractedTitle = title;
+    let contentType = 'html'; // Default to HTML for web clips
 
     switch (selectedClipType) {
       case 'article':
@@ -277,6 +139,10 @@ async function handleClip() {
           extractedTitle = articleResult.title;
           document.getElementById('clip-title').value = extractedTitle;
         }
+        // Add byline/author if available
+        if (articleResult.byline) {
+          content = `<p class="article-byline">${articleResult.byline}</p>` + content;
+        }
         break;
       case 'selection':
         content = await getSelectedContent();
@@ -285,26 +151,20 @@ async function handleClip() {
         content = await getSimplifiedContent();
         break;
       case 'url':
-        content = `[${pageInfo.title}](${pageInfo.url})`;
+        content = `<p><a href="${pageInfo.url}">${pageInfo.title}</a></p>`;
         break;
     }
 
-    // Convert to Markdown if possible (except for URL which is already markdown)
-    if (selectedClipType !== 'url' && turndownService) {
-      content = htmlToMarkdown(content);
-    }
-
-    // Add user notes if provided
+    // Add user notes at the top if provided
     if (notes) {
-      content = `> **My Notes:** ${notes}\n\n---\n\n${content}`;
+      content = `<blockquote class="user-notes"><strong>My Notes:</strong> ${notes}</blockquote><hr/>` + content;
     }
 
-    // Add source link at the bottom
+    // Add source footer
     if (selectedClipType !== 'url') {
-      content += `\n\n---\n*Source: [${pageInfo.title}](${pageInfo.url})*`;
+      content += `<hr/><p class="source-link"><small>Source: <a href="${pageInfo.url}">${pageInfo.title}</a></small></p>`;
     }
 
-    // Save to storage for later sync (works offline)
     const clip = {
       id: `clip_${Date.now()}`,
       notebookId,
@@ -315,7 +175,6 @@ async function handleClip() {
       synced: false
     };
 
-    // Try to send to API
     try {
       const response = await fetch(`${API_URL}/clips`, {
         method: 'POST',
@@ -324,6 +183,7 @@ async function handleClip() {
           notebook_id: notebookId,
           title: extractedTitle,
           content,
+          content_type: contentType,
           source_url: pageInfo.url
         })
       });
@@ -335,7 +195,6 @@ async function handleClip() {
         throw new Error('API error');
       }
     } catch (apiError) {
-      // Save locally for later sync
       const pending = await chrome.storage.local.get('pendingClips') || { pendingClips: [] };
       pending.pendingClips = pending.pendingClips || [];
       pending.pendingClips.push(clip);
@@ -343,7 +202,6 @@ async function handleClip() {
       showStatus('Saved locally. Will sync when app is open.', 'info');
     }
 
-    // Close popup after short delay
     setTimeout(() => window.close(), 1500);
 
   } catch (error) {
@@ -361,27 +219,47 @@ function showStatus(message, type) {
   status.textContent = message;
 }
 
-// Get article content using Readability (via content script)
+// Get article content using Readability - returns clean HTML
 async function getArticleContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   try {
-    // First, inject Readability library
+    // Inject Readability library
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['lib/Readability.js']
     });
 
-    // Then extract article using Readability
+    // Extract article using Readability
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => {
+      func: (baseUrl) => {
         try {
           if (typeof Readability === 'undefined') {
             return { success: false, content: document.body.innerHTML, title: document.title };
           }
 
           const documentClone = document.cloneNode(true);
+
+          // Fix relative URLs before parsing
+          documentClone.querySelectorAll('img[src]').forEach(img => {
+            const src = img.getAttribute('src');
+            if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+              try {
+                img.setAttribute('src', new URL(src, baseUrl).href);
+              } catch (e) {}
+            }
+          });
+
+          documentClone.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href');
+            if (href && !href.startsWith('http') && !href.startsWith('mailto:') && !href.startsWith('#')) {
+              try {
+                a.setAttribute('href', new URL(href, baseUrl).href);
+              } catch (e) {}
+            }
+          });
+
           const reader = new Readability(documentClone, {
             charThreshold: 100
           });
@@ -402,14 +280,14 @@ async function getArticleContent() {
         } catch (error) {
           return { success: false, content: document.body.innerHTML, title: document.title, error: error.message };
         }
-      }
+      },
+      args: [pageInfo.url]
     });
 
     if (result?.result?.success) {
       return result.result;
     }
 
-    // Fallback to simplified extraction
     return await getSimplifiedContent();
 
   } catch (error) {
@@ -421,13 +299,13 @@ async function getArticleContent() {
   }
 }
 
-// Get selected text content
+// Get selected text content as HTML
 async function getSelectedContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    func: () => {
+    func: (baseUrl) => {
       const selection = window.getSelection();
       if (selection.rangeCount === 0) return { text: '', html: '' };
 
@@ -436,8 +314,29 @@ async function getSelectedContent() {
       for (let i = 0; i < selection.rangeCount; i++) {
         container.appendChild(selection.getRangeAt(i).cloneContents());
       }
+
+      // Fix relative URLs
+      container.querySelectorAll('img[src]').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+          try {
+            img.setAttribute('src', new URL(src, baseUrl).href);
+          } catch (e) {}
+        }
+      });
+
+      container.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href');
+        if (href && !href.startsWith('http') && !href.startsWith('mailto:')) {
+          try {
+            a.setAttribute('href', new URL(href, baseUrl).href);
+          } catch (e) {}
+        }
+      });
+
       return { text, html: container.innerHTML };
-    }
+    },
+    args: [pageInfo.url]
   });
 
   const { text, html } = result?.result || { text: '', html: '' };
@@ -446,17 +345,16 @@ async function getSelectedContent() {
     return '<p>No text selected. Please select text on the page and try again.</p>';
   }
 
-  // Return HTML if available, otherwise wrapped text
   return html || `<blockquote>${text}</blockquote>`;
 }
 
-// Get simplified page content (cleaned up, no Readability)
+// Get simplified page content as clean HTML
 async function getSimplifiedContent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    func: () => {
+    func: (baseUrl) => {
       const clone = document.body.cloneNode(true);
 
       // Remove unwanted elements
@@ -495,24 +393,45 @@ async function getSimplifiedContent() {
 
       const targetElement = mainContent || clone;
 
-      // Clean up attributes but KEEP images
-      targetElement.querySelectorAll('*').forEach(el => {
-        // Keep src, alt, title for images
-        if (el.tagName !== 'IMG' && el.tagName !== 'A') {
-          el.removeAttribute('style');
-          el.removeAttribute('class');
-          el.removeAttribute('id');
+      // Fix relative URLs
+      targetElement.querySelectorAll('img[src]').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+          try {
+            img.setAttribute('src', new URL(src, baseUrl).href);
+          } catch (e) {}
         }
+      });
+
+      targetElement.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href');
+        if (href && !href.startsWith('http') && !href.startsWith('mailto:')) {
+          try {
+            a.setAttribute('href', new URL(href, baseUrl).href);
+          } catch (e) {}
+        }
+      });
+
+      // Clean up unwanted attributes but keep essential ones
+      targetElement.querySelectorAll('*').forEach(el => {
         el.removeAttribute('onclick');
         el.removeAttribute('onload');
+        el.removeAttribute('onerror');
+        // Remove inline styles except for images that might need them
+        if (el.tagName !== 'IMG') {
+          el.removeAttribute('style');
+        }
+        el.removeAttribute('class');
+        el.removeAttribute('id');
       });
 
       return {
         content: targetElement.innerHTML,
         title: document.title
       };
-    }
+    },
+    args: [pageInfo.url]
   });
 
-  return result?.result || { content: '', title: pageInfo.title };
+  return result?.result?.content || '';
 }

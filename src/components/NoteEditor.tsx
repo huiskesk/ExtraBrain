@@ -2,30 +2,17 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useStore } from "../stores/useStore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import {
-  Save,
   Eye,
   Edit3,
-  Columns,
   ExternalLink,
   FileText,
-  Bold,
-  Italic,
-  List,
-  ListOrdered,
-  Code,
-  Quote,
-  Link2,
-  Image,
-  Heading1,
-  Heading2,
-  BookOpen,
+  Globe,
 } from "lucide-react";
-import type { Note, ViewMode } from "../types";
+import type { Note } from "../types";
 
 export default function NoteEditor() {
-  const { notes, selectedNoteId, updateNote, viewMode, setViewMode } = useStore();
+  const { notes, selectedNoteId, updateNote } = useStore();
 
   const note = useMemo(
     () => notes.find((n) => n.id === selectedNoteId),
@@ -34,43 +21,32 @@ export default function NoteEditor() {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
-  // Determine if this is a web clip (has source_url)
+  // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
 
   // Load note content when selected note changes
-  // For web clips, default to preview mode
   useEffect(() => {
     if (note) {
       setTitle(note.title);
       setContent(note.content);
       setHasChanges(false);
-
-      // Default to preview mode for web clips
-      if (note.source_url && viewMode === "edit") {
-        setViewMode("preview");
-      }
+      // Web clips default to view mode, regular notes to edit mode
+      setIsEditing(!note.source_url);
     }
   }, [note?.id]);
 
-  // Auto-save with debounce
-  useEffect(() => {
-    if (!hasChanges || !note) return;
-
-    const timer = setTimeout(async () => {
-      setIsSaving(true);
-      try {
-        await updateNote(note.id, { title, content });
-        setHasChanges(false);
-      } finally {
-        setIsSaving(false);
-      }
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [title, content, hasChanges, note, updateNote]);
+  // Auto-save when switching from edit to view mode
+  const handleToggleMode = useCallback(async () => {
+    if (isEditing && hasChanges && note) {
+      // Save before switching to view mode
+      await updateNote(note.id, { title, content });
+      setHasChanges(false);
+    }
+    setIsEditing(!isEditing);
+  }, [isEditing, hasChanges, note, title, content, updateNote]);
 
   const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value);
@@ -82,31 +58,6 @@ export default function NoteEditor() {
     setHasChanges(true);
   }, []);
 
-  const insertMarkdown = useCallback((prefix: string, suffix = "") => {
-    const textarea = document.querySelector("textarea");
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = content.substring(start, end);
-    const newText =
-      content.substring(0, start) +
-      prefix +
-      selectedText +
-      suffix +
-      content.substring(end);
-
-    setContent(newText);
-    setHasChanges(true);
-
-    // Restore cursor position
-    setTimeout(() => {
-      textarea.focus();
-      const cursorPos = start + prefix.length + selectedText.length + suffix.length;
-      textarea.setSelectionRange(cursorPos, cursorPos);
-    }, 0);
-  }, [content]);
-
   if (!note) {
     return null;
   }
@@ -116,208 +67,143 @@ export default function NoteEditor() {
     return <PdfViewer note={note} />;
   }
 
-  // HTML content (legacy web clips stored as HTML)
-  if (note.content_type === "html") {
-    return <HtmlViewer note={note} />;
-  }
-
   return (
     <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
-      {/* Sticky Toolbar */}
-      <div className="flex-shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center gap-1">
-          {/* Only show formatting buttons in edit or split mode */}
-          {(viewMode === "edit" || viewMode === "split") && (
-            <>
-              <ToolbarButton icon={Bold} onClick={() => insertMarkdown("**", "**")} title="Bold" />
-              <ToolbarButton icon={Italic} onClick={() => insertMarkdown("*", "*")} title="Italic" />
-              <ToolbarButton icon={Code} onClick={() => insertMarkdown("`", "`")} title="Code" />
-              <div className="w-px h-5 bg-gray-300 mx-1" />
-              <ToolbarButton icon={Heading1} onClick={() => insertMarkdown("# ")} title="Heading 1" />
-              <ToolbarButton icon={Heading2} onClick={() => insertMarkdown("## ")} title="Heading 2" />
-              <div className="w-px h-5 bg-gray-300 mx-1" />
-              <ToolbarButton icon={List} onClick={() => insertMarkdown("- ")} title="Bullet List" />
-              <ToolbarButton icon={ListOrdered} onClick={() => insertMarkdown("1. ")} title="Numbered List" />
-              <ToolbarButton icon={Quote} onClick={() => insertMarkdown("> ")} title="Quote" />
-              <div className="w-px h-5 bg-gray-300 mx-1" />
-              <ToolbarButton icon={Link2} onClick={() => insertMarkdown("[", "](url)")} title="Link" />
-              <ToolbarButton icon={Image} onClick={() => insertMarkdown("![alt](", ")")} title="Image" />
-            </>
-          )}
-          {/* Show "Reading" indicator in preview mode */}
-          {viewMode === "preview" && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <BookOpen size={16} />
-              <span>Reading Mode</span>
+      {/* Toolbar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center gap-2">
+          {isWebClip && (
+            <div className="flex items-center gap-1.5 text-sm text-blue-600">
+              <Globe size={16} />
+              <span>Web Clip</span>
             </div>
           )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Save indicator */}
-          {isSaving && (
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Save size={12} className="animate-pulse" />
-              Saving...
+          {hasChanges && (
+            <span className="text-xs text-amber-500 bg-amber-50 px-2 py-0.5 rounded">
+              Unsaved
             </span>
           )}
-          {hasChanges && !isSaving && (
-            <span className="text-xs text-amber-500">Unsaved changes</span>
-          )}
-
-          {/* View mode buttons */}
-          <div className="flex items-center bg-gray-200 rounded-lg p-0.5">
-            <ViewModeButton
-              icon={Edit3}
-              active={viewMode === "edit"}
-              onClick={() => setViewMode("edit")}
-              title="Edit"
-              label="Edit"
-            />
-            <ViewModeButton
-              icon={Columns}
-              active={viewMode === "split"}
-              onClick={() => setViewMode("split")}
-              title="Split View"
-            />
-            <ViewModeButton
-              icon={Eye}
-              active={viewMode === "preview"}
-              onClick={() => setViewMode("preview")}
-              title="Read"
-              label="Read"
-            />
-          </div>
         </div>
+
+        {/* Simple View/Edit Toggle */}
+        <button
+          onClick={handleToggleMode}
+          className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+        >
+          {isEditing ? (
+            <>
+              <Eye size={16} />
+              View Note
+            </>
+          ) : (
+            <>
+              <Edit3 size={16} />
+              Edit
+            </>
+          )}
+        </button>
       </div>
 
-      {/* Title - Sticky below toolbar */}
-      <div className="flex-shrink-0 px-6 pt-6 pb-4 bg-white border-b border-gray-100">
-        {viewMode === "preview" ? (
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-        ) : (
-          <input
-            type="text"
-            value={title}
-            onChange={handleTitleChange}
-            placeholder="Note title"
-            className="w-full text-2xl font-bold text-gray-900 border-none outline-none placeholder:text-gray-300"
-          />
-        )}
-        {note.source_url && (
-          <a
-            href={note.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 mt-2"
-          >
-            <ExternalLink size={12} />
-            {new URL(note.source_url).hostname}
-          </a>
-        )}
-      </div>
-
-      {/* Editor / Preview - Scrollable */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {(viewMode === "edit" || viewMode === "split") && (
-          <div className={`flex-1 overflow-y-auto ${viewMode === "split" ? "border-r border-gray-200" : ""}`}>
-            <textarea
-              value={content}
-              onChange={handleContentChange}
-              placeholder="Start writing..."
-              className="w-full h-full min-h-full p-6 text-gray-800 leading-relaxed resize-none outline-none font-mono text-sm"
-            />
-          </div>
-        )}
-
-        {(viewMode === "preview" || viewMode === "split") && (
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-6">
-              <article className="markdown-preview prose prose-sm max-w-none prose-img:rounded-lg prose-img:shadow-md prose-img:my-4 prose-a:text-blue-600 prose-headings:text-gray-900">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
-                  components={{
-                    // Custom image component with better styling
-                    img: ({ node, ...props }) => (
-                      <img
-                        {...props}
-                        loading="lazy"
-                        className="max-w-full h-auto rounded-lg shadow-md my-4"
-                        onError={(e) => {
-                          // Hide broken images
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                    ),
-                    // Open links in new tab
-                    a: ({ node, ...props }) => (
-                      <a
-                        {...props}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 underline"
-                      />
-                    ),
-                  }}
+      {/* Content Area */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {isEditing ? (
+          /* Edit Mode */
+          <div className="h-full flex flex-col">
+            {/* Title Input */}
+            <div className="px-8 pt-8 pb-4 border-b border-gray-100">
+              <input
+                type="text"
+                value={title}
+                onChange={handleTitleChange}
+                placeholder="Note title"
+                className="w-full text-2xl font-bold text-gray-900 border-none outline-none placeholder:text-gray-300"
+              />
+              {note.source_url && (
+                <a
+                  href={note.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 mt-2"
                 >
-                  {content || "*No content*"}
-                </ReactMarkdown>
-              </article>
+                  <ExternalLink size={12} />
+                  {new URL(note.source_url).hostname}
+                </a>
+              )}
+            </div>
+
+            {/* Content Textarea */}
+            <div className="flex-1 min-h-0">
+              <textarea
+                value={content}
+                onChange={handleContentChange}
+                placeholder="Start writing..."
+                className="w-full h-full p-8 text-gray-800 leading-relaxed resize-none outline-none font-mono text-sm"
+              />
             </div>
           </div>
+        ) : (
+          /* View Mode - Professional Article Rendering */
+          <article className="article-view">
+            {/* Article Header */}
+            <header className="px-8 pt-8 pb-6 border-b border-gray-100">
+              <h1 className="text-3xl font-bold text-gray-900 leading-tight mb-3">
+                {title}
+              </h1>
+              {note.source_url && (
+                <a
+                  href={note.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
+                >
+                  <ExternalLink size={14} />
+                  View original at {new URL(note.source_url).hostname}
+                </a>
+              )}
+            </header>
+
+            {/* Article Content */}
+            <div className="px-8 py-6">
+              {isWebClip || note.content_type === "html" ? (
+                /* Render HTML content with professional styling */
+                <div
+                  className="article-content prose prose-lg max-w-none
+                    prose-headings:text-gray-900 prose-headings:font-semibold
+                    prose-h1:text-2xl prose-h1:mt-8 prose-h1:mb-4
+                    prose-h2:text-xl prose-h2:mt-6 prose-h2:mb-3
+                    prose-h3:text-lg prose-h3:mt-5 prose-h3:mb-2
+                    prose-p:text-gray-700 prose-p:leading-relaxed prose-p:mb-4
+                    prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                    prose-strong:text-gray-900 prose-strong:font-semibold
+                    prose-em:italic
+                    prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-gray-600
+                    prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono
+                    prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:rounded-lg prose-pre:p-4 prose-pre:overflow-x-auto
+                    prose-img:rounded-lg prose-img:shadow-md prose-img:my-6 prose-img:max-w-full prose-img:h-auto
+                    prose-figure:my-6
+                    prose-figcaption:text-center prose-figcaption:text-sm prose-figcaption:text-gray-500 prose-figcaption:mt-2
+                    prose-ul:list-disc prose-ul:pl-6 prose-ul:my-4
+                    prose-ol:list-decimal prose-ol:pl-6 prose-ol:my-4
+                    prose-li:mb-2
+                    prose-hr:border-gray-200 prose-hr:my-8
+                    prose-table:border-collapse prose-table:w-full
+                    prose-th:border prose-th:border-gray-300 prose-th:bg-gray-50 prose-th:px-4 prose-th:py-2 prose-th:text-left
+                    prose-td:border prose-td:border-gray-300 prose-td:px-4 prose-td:py-2"
+                  dangerouslySetInnerHTML={{ __html: content }}
+                />
+              ) : (
+                /* Render Markdown content */
+                <div className="prose prose-lg max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {content || "*No content*"}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
+          </article>
         )}
       </div>
     </div>
-  );
-}
-
-function ToolbarButton({
-  icon: Icon,
-  onClick,
-  title,
-}: {
-  icon: React.ComponentType<{ size?: number }>;
-  onClick: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className="p-1.5 hover:bg-gray-200 rounded text-gray-600 hover:text-gray-900 transition-colors"
-    >
-      <Icon size={16} />
-    </button>
-  );
-}
-
-function ViewModeButton({
-  icon: Icon,
-  active,
-  onClick,
-  title,
-  label,
-}: {
-  icon: React.ComponentType<{ size?: number }>;
-  active: boolean;
-  onClick: () => void;
-  title: string;
-  label?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`flex items-center gap-1 px-2 py-1.5 rounded transition-colors ${
-        active
-          ? "bg-white text-gray-900 shadow-sm"
-          : "text-gray-500 hover:text-gray-700"
-      }`}
-    >
-      <Icon size={14} />
-      {label && <span className="text-xs font-medium">{label}</span>}
-    </button>
   );
 }
 
@@ -341,71 +227,6 @@ function PdfViewer({ note }: { note: Note }) {
             File: {note.pdf_path}
           </p>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function HtmlViewer({ note }: { note: Note }) {
-  const { updateNote } = useStore();
-  const [isEditing, setIsEditing] = useState(false);
-  const [content, setContent] = useState(note.content);
-
-  const handleSave = async () => {
-    await updateNote(note.id, { content });
-    setIsEditing(false);
-  };
-
-  return (
-    <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
-      {/* Sticky Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">{note.title}</h1>
-          {note.source_url && (
-            <a
-              href={note.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 mt-1"
-            >
-              <ExternalLink size={12} />
-              {note.source_url}
-            </a>
-          )}
-        </div>
-        <button
-          onClick={() => (isEditing ? handleSave() : setIsEditing(true))}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-        >
-          {isEditing ? (
-            <>
-              <Save size={14} />
-              Save
-            </>
-          ) : (
-            <>
-              <Edit3 size={14} />
-              Edit
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {isEditing ? (
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full h-full min-h-[400px] font-mono text-sm resize-none outline-none border border-gray-200 rounded-lg p-4"
-          />
-        ) : (
-          <div
-            className="prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: note.content }}
-          />
-        )}
       </div>
     </div>
   );
