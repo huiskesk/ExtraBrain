@@ -34,7 +34,7 @@ export default function NoteList() {
   const [moveMenuNoteId, setMoveMenuNoteId] = useState<string | null>(null);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
 
-  // Close menus when clicking outside
+  // Close menus when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuOpenId || moveMenuNoteId) {
@@ -45,8 +45,20 @@ export default function NoteList() {
         }
       }
     };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (menuOpenId || moveMenuNoteId)) {
+        setMenuOpenId(null);
+        setMoveMenuNoteId(null);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [menuOpenId, moveMenuNoteId]);
 
   const handleCreateNote = () => {
