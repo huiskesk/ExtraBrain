@@ -29,6 +29,8 @@ export default function NoteEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const dragCounter = useRef(0);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   // Keep track of current note id to detect changes
   const currentNoteIdRef = useRef<string | null>(null);
@@ -95,6 +97,9 @@ export default function NoteEditor() {
       setHasChanges(false);
       // Web clips default to view mode, regular notes to edit mode
       setIsEditing(!note.source_url);
+      // Reset drag state when switching notes
+      setIsDraggingImage(false);
+      dragCounter.current = 0;
     }
   }, [note?.id]);
 
@@ -122,14 +127,25 @@ export default function NoteEditor() {
     setHasChanges(true);
   }, []);
 
-  // Image drag and drop handlers
+  // Image drag and drop handlers - using counter to handle child element events
+  const handleImageDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    dragCounter.current++;
+
+    // Check if dragging files (not internal note drag)
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDraggingImage(true);
+    }
+  }, []);
+
   const handleImageDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // Check if dragging files (not internal drag)
+    // Check if dragging files (not internal note drag)
     if (e.dataTransfer.types.includes('Files')) {
-      setIsDraggingImage(true);
       e.dataTransfer.dropEffect = 'copy';
     }
   }, []);
@@ -137,12 +153,18 @@ export default function NoteEditor() {
   const handleImageDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDraggingImage(false);
+
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDraggingImage(false);
+    }
   }, []);
 
-  const handleImageDrop = useCallback(async (e: React.DragEvent) => {
+  const handleImageDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    dragCounter.current = 0;
     setIsDraggingImage(false);
 
     const files = Array.from(e.dataTransfer.files);
@@ -151,19 +173,27 @@ export default function NoteEditor() {
       (file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/gif' || file.type === 'image/webp')
     );
 
-    if (imageFiles.length === 0) return;
+    if (imageFiles.length === 0) {
+      console.log('No valid image files found in drop');
+      return;
+    }
+
+    console.log('Processing', imageFiles.length, 'image file(s)');
+
+    // Capture current content type for the closure
+    const useHtmlFormat = isWebClip || note?.content_type === "html";
 
     // Process each image file
-    for (const file of imageFiles) {
+    imageFiles.forEach((file) => {
       const reader = new FileReader();
+
       reader.onload = (event) => {
         const base64Data = event.target?.result as string;
         if (base64Data) {
-          // Insert image based on content type
-          const isHtmlContent = isWebClip || note?.content_type === "html";
+          console.log('Image loaded, inserting into note');
 
           let imageMarkup: string;
-          if (isHtmlContent) {
+          if (useHtmlFormat) {
             // HTML format
             imageMarkup = `<p><img src="${base64Data}" alt="${file.name}" style="max-width: 100%; height: auto;" /></p>`;
           } else {
@@ -175,8 +205,13 @@ export default function NoteEditor() {
           setHasChanges(true);
         }
       };
+
+      reader.onerror = (error) => {
+        console.error('Error reading file:', error);
+      };
+
       reader.readAsDataURL(file);
-    }
+    });
   }, [isWebClip, note?.content_type]);
 
   // Keyboard shortcut for save (Cmd/Ctrl + S)
@@ -205,7 +240,9 @@ export default function NoteEditor() {
 
   return (
     <div
+      ref={editorContainerRef}
       className="flex-1 flex flex-col bg-white h-full overflow-hidden relative"
+      onDragEnter={handleImageDragEnter}
       onDragOver={handleImageDragOver}
       onDragLeave={handleImageDragLeave}
       onDrop={handleImageDrop}

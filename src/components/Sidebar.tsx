@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "../stores/useStore";
 import {
   Book,
@@ -44,6 +44,36 @@ export default function Sidebar() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on click outside or Escape key
+  useEffect(() => {
+    if (!menuOpenId) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpenId(null);
+      }
+    };
+
+    // Use setTimeout to avoid closing immediately on the same click that opened it
+    setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }, 0);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpenId]);
 
   const handleCreateNotebook = async () => {
     if (newNotebookName.trim()) {
@@ -220,7 +250,10 @@ export default function Sidebar() {
 
                   {/* Dropdown Menu */}
                   {menuOpenId === notebook.id && (
-                    <div className="absolute right-0 top-full mt-1 w-40 bg-gray-800 rounded-lg shadow-xl border border-gray-700 py-1 z-50">
+                    <div
+                      ref={menuRef}
+                      className="absolute right-0 top-full mt-1 w-40 bg-gray-800 rounded-lg shadow-xl border border-gray-700 py-1 z-50"
+                    >
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
