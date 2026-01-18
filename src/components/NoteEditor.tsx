@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../stores/useStore";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   Eye,
   Edit3,
@@ -14,6 +12,42 @@ import {
 } from "lucide-react";
 import type { Note } from "../types";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
+
+// Milkdown imports
+import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
+import { commonmark } from "@milkdown/preset-commonmark";
+import { nord } from "@milkdown/theme-nord";
+import { listener, listenerCtx } from "@milkdown/plugin-listener";
+import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
+
+interface MilkdownEditorProps {
+  initialContent: string;
+  onChange: (content: string) => void;
+}
+
+function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorProps) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEditor((root) => {
+    return Editor.make()
+      .config((ctx) => {
+        ctx.set(rootCtx, root);
+        ctx.set(defaultValueCtx, initialContent);
+        ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
+          onChangeRef.current(markdown);
+        });
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .use(listener as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .use(commonmark as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .use(nord as any);
+  }, [initialContent]);
+
+  return <Milkdown />;
+}
 
 export default function NoteEditor() {
   const { notes, selectedNoteId, updateNote } = useStore();
@@ -30,6 +64,7 @@ export default function NoteEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [editorKey, setEditorKey] = useState(0);
   const dragCounter = useRef(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +115,6 @@ export default function NoteEditor() {
 
     // If we're switching from one note to another, save the previous one
     if (previousNoteId && previousNoteId !== selectedNoteId && hasChangesRef.current) {
-      // Save the previous note before switching
       const savePromise = updateNote(previousNoteId, {
         title: titleRef.current,
         content: contentRef.current,
@@ -103,13 +137,14 @@ export default function NoteEditor() {
       // Reset drag state when switching notes
       setIsDraggingImage(false);
       dragCounter.current = 0;
+      // Force Milkdown to reinitialize with new content
+      setEditorKey((prev) => prev + 1);
     }
   }, [note?.id]);
 
   // Auto-save when switching from edit to view mode
   const handleToggleMode = useCallback(async () => {
     if (isEditing && hasChanges && note) {
-      // Save before switching to view mode
       await saveNote();
     }
     setIsEditing(!isEditing);
@@ -125,8 +160,9 @@ export default function NoteEditor() {
     setHasChanges(true);
   }, []);
 
-  const handleContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
+  const handleContentChange = useCallback((newContent: string) => {
+    setContent(newContent);
+    contentRef.current = newContent;
     setHasChanges(true);
   }, []);
 
@@ -169,7 +205,10 @@ export default function NoteEditor() {
         }
 
         setContent((prev) => prev + imageMarkup);
+        contentRef.current = contentRef.current + imageMarkup;
         setHasChanges(true);
+        // Reinitialize editor with new content
+        setEditorKey((prev) => prev + 1);
       }
     };
 
@@ -207,8 +246,7 @@ export default function NoteEditor() {
 
     dragCounter.current++;
 
-    // Check if dragging files (not internal note drag)
-    if (e.dataTransfer.types.includes('Files')) {
+    if (e.dataTransfer.types.includes("Files")) {
       setIsDraggingImage(true);
     }
   }, [isWebClip]);
@@ -221,9 +259,8 @@ export default function NoteEditor() {
       return;
     }
 
-    // Check if dragging files (not internal note drag)
-    if (e.dataTransfer.types.includes('Files')) {
-      e.dataTransfer.dropEffect = 'copy';
+    if (e.dataTransfer.types.includes("Files")) {
+      e.dataTransfer.dropEffect = "copy";
     }
   }, [isWebClip]);
 
@@ -241,46 +278,49 @@ export default function NoteEditor() {
     }
   }, [isWebClip]);
 
-  const handleImageDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleImageDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    dragCounter.current = 0;
-    setIsDraggingImage(false);
+      dragCounter.current = 0;
+      setIsDraggingImage(false);
 
-    if (isWebClip) {
-      return;
-    }
-
-    const files = Array.from(e.dataTransfer.files);
-    const droppedFiles =
-      files.length > 0
-        ? files
-        : Array.from(e.dataTransfer.items || [])
-            .filter((item) => item.kind === "file")
-            .map((item) => item.getAsFile())
-            .filter((file): file is File => Boolean(file));
-
-    const imageFiles = droppedFiles.filter((file) => {
-      if (!isValidImageFile(file)) {
-        return false;
+      if (isWebClip) {
+        return;
       }
-      const maxImageSize = 5 * 1024 * 1024;
-      return file.size <= maxImageSize;
-    });
 
-    if (imageFiles.length === 0) {
-      console.log('No valid image files found in drop');
-      return;
-    }
+      const files = Array.from(e.dataTransfer.files);
+      const droppedFiles =
+        files.length > 0
+          ? files
+          : Array.from(e.dataTransfer.items || [])
+              .filter((item) => item.kind === "file")
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => Boolean(file));
 
-    console.log('Processing', imageFiles.length, 'image file(s)');
+      const imageFiles = droppedFiles.filter((file) => {
+        if (!isValidImageFile(file)) {
+          return false;
+        }
+        const maxImageSize = 5 * 1024 * 1024;
+        return file.size <= maxImageSize;
+      });
 
-    // Process each image file
-    imageFiles.forEach((file) => {
-      insertImageFile(file);
-    });
-  }, [insertImageFile, isValidImageFile]);
+      if (imageFiles.length === 0) {
+        console.log("No valid image files found in drop");
+        return;
+      }
+
+      console.log("Processing", imageFiles.length, "image file(s)");
+
+      // Process each image file
+      imageFiles.forEach((file) => {
+        insertImageFile(file);
+      });
+    },
+    [insertImageFile, isValidImageFile, isWebClip]
+  );
 
   // Keyboard shortcut for save (Cmd/Ctrl + S)
   useEffect(() => {
@@ -320,7 +360,9 @@ export default function NoteEditor() {
         <div className="absolute inset-0 bg-brand-500/20 border-4 border-dashed border-brand-500 z-50 flex items-center justify-center pointer-events-none">
           <div className="bg-white rounded-xl px-8 py-6 shadow-xl flex items-center gap-3">
             <ImageIcon size={32} className="text-brand-500" />
-            <span className="text-lg font-medium text-gray-700">Drop image here</span>
+            <span className="text-lg font-medium text-gray-700">
+              Drop image here
+            </span>
           </div>
         </div>
       )}
@@ -348,7 +390,7 @@ export default function NoteEditor() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isEditing && (
+          {isEditing && !isWebClip && (
             <>
               <button
                 onClick={handleImageUploadClick}
@@ -406,7 +448,7 @@ export default function NoteEditor() {
       {/* Content Area */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {isEditing ? (
-          /* Edit Mode */
+          /* Edit Mode with Milkdown */
           <div className="h-full flex flex-col">
             {/* Title Input */}
             <div className="px-8 pt-8 pb-4 border-b border-gray-100">
@@ -430,14 +472,15 @@ export default function NoteEditor() {
               )}
             </div>
 
-            {/* Content Textarea */}
-            <div className="flex-1 min-h-0">
-              <textarea
-                value={content}
-                onChange={handleContentChange}
-                placeholder="Start writing..."
-                className="w-full h-full p-8 text-gray-800 leading-relaxed resize-none outline-none font-mono text-sm"
-              />
+            {/* Milkdown Editor */}
+            <div className="flex-1 min-h-0 px-8 py-4 milkdown-editor-container">
+              <MilkdownProvider>
+                <MilkdownEditorComponent
+                  key={editorKey}
+                  initialContent={content}
+                  onChange={handleContentChange}
+                />
+              </MilkdownProvider>
             </div>
           </div>
         ) : (
@@ -491,18 +534,15 @@ export default function NoteEditor() {
                   dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                 />
               ) : (
-                /* Render Markdown content */
+                /* Render Markdown content using Milkdown in read-only style */
                 <div className="prose prose-lg max-w-none">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    urlTransform={(url) =>
-                      url.startsWith("data:image/")
-                        ? url
-                        : defaultUrlTransform(url)
-                    }
-                  >
-                    {content || "*No content*"}
-                  </ReactMarkdown>
+                  <MilkdownProvider>
+                    <MilkdownEditorComponent
+                      key={`view-${editorKey}`}
+                      initialContent={content || "*No content*"}
+                      onChange={() => {}}
+                    />
+                  </MilkdownProvider>
                 </div>
               )}
             </div>
@@ -529,9 +569,7 @@ function PdfViewer({ note }: { note: Note }) {
           <p className="text-sm text-gray-500">
             PDF viewing will be available in a future update.
           </p>
-          <p className="text-xs text-gray-400 mt-2">
-            File: {note.pdf_path}
-          </p>
+          <p className="text-xs text-gray-400 mt-2">File: {note.pdf_path}</p>
         </div>
       </div>
     </div>
