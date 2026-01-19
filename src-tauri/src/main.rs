@@ -50,6 +50,8 @@ fn main() {
             // Web clip commands (also available via HTTP API)
             commands::save_web_clip,
             commands::get_extension_token,
+            // Image file handling for drag and drop
+            commands::read_image_file,
         ])
         // Setup hook runs when the app starts
         .setup(|app| {

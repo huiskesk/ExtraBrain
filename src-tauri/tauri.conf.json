@@ -76,7 +76,8 @@
         "title": "ExtraBrain",
         "width": 1200,
         "minWidth": 800,
-        "minHeight": 600
+        "minHeight": 600,
+        "fileDropEnabled": true
       }
     ]
   }

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import type { Note } from "../types";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/tauri";
 
 // Milkdown imports
 import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
@@ -49,6 +51,13 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
   return <Milkdown />;
 }
 
+interface ImageData {
+  path: string;
+  name: string;
+  base64: string;
+  mime_type: string;
+}
+
 export default function NoteEditor() {
   const { notes, selectedNoteId, updateNote } = useStore();
 
@@ -75,6 +84,8 @@ export default function NoteEditor() {
   const titleRef = useRef("");
   const contentRef = useRef("");
   const noteIdRef = useRef<string | null>(null);
+  const isWebClipRef = useRef(false);
+  const contentTypeRef = useRef<string | undefined>(undefined);
 
   // Update refs when state changes
   useEffect(() => {
@@ -82,11 +93,84 @@ export default function NoteEditor() {
     titleRef.current = title;
     contentRef.current = content;
     noteIdRef.current = note?.id || null;
-  }, [hasChanges, title, content, note?.id]);
+    isWebClipRef.current = Boolean(note?.source_url);
+    contentTypeRef.current = note?.content_type;
+  }, [hasChanges, title, content, note?.id, note?.source_url, note?.content_type]);
 
   // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
   const sanitizedContent = useMemo(() => sanitizeHtml(content), [content]);
+
+  // Function to insert image into content
+  const insertImageMarkup = useCallback((base64Data: string, fileName: string) => {
+    const useHtmlFormat = isWebClipRef.current || contentTypeRef.current === "html";
+    let imageMarkup: string;
+    if (useHtmlFormat) {
+      imageMarkup = `<p><img src="${base64Data}" alt="${fileName}" style="max-width: 100%; height: auto;" /></p>`;
+    } else {
+      imageMarkup = `\n![${fileName}](${base64Data})\n`;
+    }
+
+    setContent((prev) => prev + imageMarkup);
+    contentRef.current = contentRef.current + imageMarkup;
+    setHasChanges(true);
+    // Reinitialize editor with new content
+    setEditorKey((prev) => prev + 1);
+  }, []);
+
+  // Tauri native file drop handler
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setupListener = async () => {
+      // Listen for Tauri's native file drop event
+      unlisten = await listen<string[]>("tauri://file-drop", async (event) => {
+        console.log("Tauri file-drop event:", event.payload);
+
+        // Don't process if we're viewing a web clip or no note is selected
+        if (isWebClipRef.current || !noteIdRef.current) {
+          console.log("Skipping file drop - web clip or no note selected");
+          return;
+        }
+
+        setIsDraggingImage(false);
+        dragCounter.current = 0;
+
+        const filePaths = event.payload;
+
+        for (const filePath of filePaths) {
+          try {
+            // Use Tauri command to read the image file
+            const imageData = await invoke<ImageData>("read_image_file", { path: filePath });
+            console.log("Image read successfully:", imageData.name);
+            insertImageMarkup(imageData.base64, imageData.name);
+          } catch (error) {
+            console.error("Failed to read image file:", error);
+          }
+        }
+      });
+
+      // Also listen for hover events to show visual feedback
+      await listen("tauri://file-drop-hover", () => {
+        if (!isWebClipRef.current && noteIdRef.current) {
+          setIsDraggingImage(true);
+        }
+      });
+
+      await listen("tauri://file-drop-cancelled", () => {
+        setIsDraggingImage(false);
+        dragCounter.current = 0;
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [insertImageMarkup]);
 
   // Save function
   const saveNote = useCallback(async () => {
@@ -177,6 +261,7 @@ export default function NoteEditor() {
     return extension ? allowedExtensions.has(extension) : false;
   }, []);
 
+  // File input handler (for the "Add Image" button)
   const insertImageFile = useCallback((file: File) => {
     const maxImageSize = 5 * 1024 * 1024;
     if (!isValidImageFile(file)) {
@@ -194,21 +279,8 @@ export default function NoteEditor() {
     reader.onload = (event) => {
       const base64Data = event.target?.result as string;
       if (base64Data) {
-        console.log("Image loaded, inserting into note");
-
-        const useHtmlFormat = isWebClip || note?.content_type === "html";
-        let imageMarkup: string;
-        if (useHtmlFormat) {
-          imageMarkup = `<p><img src="${base64Data}" alt="${file.name}" style="max-width: 100%; height: auto;" /></p>`;
-        } else {
-          imageMarkup = `\n![${file.name}](${base64Data})\n`;
-        }
-
-        setContent((prev) => prev + imageMarkup);
-        contentRef.current = contentRef.current + imageMarkup;
-        setHasChanges(true);
-        // Reinitialize editor with new content
-        setEditorKey((prev) => prev + 1);
+        console.log("Image loaded via file input, inserting into note");
+        insertImageMarkup(base64Data, file.name);
       }
     };
 
@@ -217,7 +289,7 @@ export default function NoteEditor() {
     };
 
     reader.readAsDataURL(file);
-  }, [isValidImageFile, isWebClip, note?.content_type]);
+  }, [isValidImageFile, insertImageMarkup]);
 
   const handleImageUploadClick = useCallback(() => {
     if (isWebClip) {
@@ -234,93 +306,6 @@ export default function NoteEditor() {
     insertImageFile(file);
     e.target.value = "";
   }, [insertImageFile]);
-
-  // Image drag and drop handlers - using counter to handle child element events
-  const handleImageDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (isWebClip) {
-      return;
-    }
-
-    dragCounter.current++;
-
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsDraggingImage(true);
-    }
-  }, [isWebClip]);
-
-  const handleImageDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (isWebClip) {
-      return;
-    }
-
-    if (e.dataTransfer.types.includes("Files")) {
-      e.dataTransfer.dropEffect = "copy";
-    }
-  }, [isWebClip]);
-
-  const handleImageDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (isWebClip) {
-      return;
-    }
-
-    dragCounter.current--;
-    if (dragCounter.current === 0) {
-      setIsDraggingImage(false);
-    }
-  }, [isWebClip]);
-
-  const handleImageDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      dragCounter.current = 0;
-      setIsDraggingImage(false);
-
-      if (isWebClip) {
-        return;
-      }
-
-      const files = Array.from(e.dataTransfer.files);
-      const droppedFiles =
-        files.length > 0
-          ? files
-          : Array.from(e.dataTransfer.items || [])
-              .filter((item) => item.kind === "file")
-              .map((item) => item.getAsFile())
-              .filter((file): file is File => Boolean(file));
-
-      const imageFiles = droppedFiles.filter((file) => {
-        if (!isValidImageFile(file)) {
-          return false;
-        }
-        const maxImageSize = 5 * 1024 * 1024;
-        return file.size <= maxImageSize;
-      });
-
-      if (imageFiles.length === 0) {
-        console.log("No valid image files found in drop");
-        return;
-      }
-
-      console.log("Processing", imageFiles.length, "image file(s)");
-
-      // Process each image file
-      imageFiles.forEach((file) => {
-        insertImageFile(file);
-      });
-    },
-    [insertImageFile, isValidImageFile, isWebClip]
-  );
 
   // Keyboard shortcut for save (Cmd/Ctrl + S)
   useEffect(() => {
@@ -350,10 +335,6 @@ export default function NoteEditor() {
     <div
       ref={editorContainerRef}
       className="flex-1 flex flex-col bg-white h-full overflow-hidden relative"
-      onDragEnter={handleImageDragEnter}
-      onDragOver={handleImageDragOver}
-      onDragLeave={handleImageDragLeave}
-      onDrop={handleImageDrop}
     >
       {/* Image Drop Zone Overlay */}
       {isDraggingImage && (

@@ -191,3 +191,67 @@ pub fn save_web_clip(
 pub fn get_extension_token() -> String {
     server_config::extension_token().to_string()
 }
+
+// Image file handling for drag and drop
+
+#[derive(serde::Serialize)]
+pub struct ImageData {
+    pub path: String,
+    pub name: String,
+    pub base64: String,
+    pub mime_type: String,
+}
+
+#[tauri::command]
+pub fn read_image_file(path: String) -> Result<ImageData, String> {
+    use std::path::Path;
+    use std::fs;
+
+    let file_path = Path::new(&path);
+
+    // Validate file exists
+    if !file_path.exists() {
+        return Err("File does not exist".to_string());
+    }
+
+    // Get file extension and validate it's an image
+    let extension = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    let mime_type = match extension.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => return Err(format!("Unsupported image format: {}", extension)),
+    };
+
+    // Get file name
+    let name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("image")
+        .to_string();
+
+    // Read file and check size (max 5MB)
+    let data = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    if data.len() > 5 * 1024 * 1024 {
+        return Err("Image file exceeds 5MB limit".to_string());
+    }
+
+    // Encode to base64
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let base64_data = STANDARD.encode(&data);
+    let base64 = format!("data:{};base64,{}", mime_type, base64_data);
+
+    Ok(ImageData {
+        path,
+        name,
+        base64,
+        mime_type: mime_type.to_string(),
+    })
+}
