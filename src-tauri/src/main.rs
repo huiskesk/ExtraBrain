@@ -47,6 +47,7 @@ fn main() {
             // PDF commands
             commands::import_pdf,
             commands::get_pdf_data,
+            commands::export_notes_to_directory,
             // Web clip commands (also available via HTTP API)
             commands::save_web_clip,
             commands::get_extension_token,

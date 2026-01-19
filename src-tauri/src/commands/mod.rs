@@ -4,6 +4,7 @@ use crate::db::{
 };
 use crate::sanitize::sanitize_html;
 use crate::server_config;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 // Notebook commands
@@ -192,6 +193,63 @@ pub fn get_extension_token() -> String {
     server_config::extension_token().to_string()
 }
 
+#[tauri::command]
+pub fn export_notes_to_directory(state: State<AppState>, path: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let notes = db.get_all_notes().map_err(|e| e.to_string())?;
+
+    let export_dir = PathBuf::from(path);
+    std::fs::create_dir_all(&export_dir).map_err(|e| e.to_string())?;
+
+    for note in notes {
+        let base_name = sanitize_filename(&note.title);
+        let note_path = unique_file_path(&export_dir, &base_name, "md");
+        let mut content = note.content.clone();
+
+        if let Some(pdf_path) = &note.pdf_path {
+            let assets_dir = export_dir.join("assets");
+            std::fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
+
+            let pdf_file_name = Path::new(pdf_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(sanitize_filename)
+                .unwrap_or_else(|| "attachment.pdf".to_string());
+            let pdf_pathbuf = Path::new(&pdf_file_name);
+            let pdf_stem = pdf_pathbuf
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("attachment");
+            let pdf_extension = pdf_pathbuf
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("pdf");
+            let pdf_export_name = format!("{}_{}", note.id, pdf_stem);
+            let pdf_export_path = unique_file_path(&assets_dir, &pdf_export_name, pdf_extension);
+
+            std::fs::copy(pdf_path, &pdf_export_path).map_err(|e| e.to_string())?;
+
+            let relative_pdf_path = format!(
+                "assets/{}",
+                pdf_export_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("attachment.pdf")
+            );
+
+            if content.contains(pdf_path) {
+                content = content.replace(pdf_path, &relative_pdf_path);
+            } else if !content.contains(&relative_pdf_path) {
+                content.push_str(&format!("\n\n[PDF Attachment]({})\n", relative_pdf_path));
+            }
+        }
+
+        std::fs::write(&note_path, content).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 // Image file handling for drag and drop
 
 #[derive(serde::Serialize)]
@@ -254,4 +312,39 @@ pub fn read_image_file(path: String) -> Result<ImageData, String> {
         base64,
         mime_type: mime_type.to_string(),
     })
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let trimmed = name.trim();
+    let fallback = if trimmed.is_empty() { "Untitled" } else { trimmed };
+    let sanitized: String = fallback
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | '?' | '%' | '*' | ':' | '|' | '"' | '<' | '>' => '_',
+            _ => c,
+        })
+        .collect();
+    let trimmed = sanitized.trim().trim_matches('.').to_string();
+    if trimmed.is_empty() {
+        "Untitled".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn unique_file_path(dir: &Path, base_name: &str, extension: &str) -> PathBuf {
+    let mut candidate = dir.join(format!("{}.{}", base_name, extension));
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let mut counter = 1;
+    loop {
+        let file_name = format!("{}-{}.{}", base_name, counter, extension);
+        candidate = dir.join(file_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+        counter += 1;
+    }
 }

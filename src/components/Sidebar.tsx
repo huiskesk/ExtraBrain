@@ -9,6 +9,8 @@ import {
   ChevronDown,
   ChevronRight,
   Upload,
+  Menu,
+  FolderDown,
 } from "lucide-react";
 import { open } from "@tauri-apps/api/dialog";
 import { readBinaryFile } from "@tauri-apps/api/fs";
@@ -49,8 +51,10 @@ export default function Sidebar() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [extensionToken, setExtensionToken] = useState<string | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [mainMenuOpen, setMainMenuOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const mainMenuRef = useRef<HTMLDivElement>(null);
 
   // Close menu on click outside or Escape key
   useEffect(() => {
@@ -79,6 +83,32 @@ export default function Sidebar() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [menuOpenId]);
+
+  useEffect(() => {
+    if (!mainMenuOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mainMenuRef.current && !mainMenuRef.current.contains(e.target as Node)) {
+        setMainMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMainMenuOpen(false);
+      }
+    };
+
+    setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }, 0);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mainMenuOpen]);
 
   useEffect(() => {
     let isMounted = true;
@@ -137,6 +167,22 @@ export default function Sidebar() {
       const fileName = selected.split("/").pop() || "document.pdf";
       await importPdf(selectedNotebookId, fileName, Array.from(fileData));
     }
+  };
+
+  const handleExportNotes = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+    });
+
+    if (selected && typeof selected === "string") {
+      try {
+        await invoke("export_notes_to_directory", { path: selected });
+      } catch (error) {
+        console.error("Failed to export notes:", error);
+      }
+    }
+    setMainMenuOpen(false);
   };
 
   const handleCopyToken = async () => {
@@ -213,11 +259,35 @@ export default function Sidebar() {
       {/* Sticky Header */}
       <div className="flex-shrink-0 sticky top-0 z-10 bg-sidebar-bg">
         <div className="p-4 border-b border-gray-700">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">EB</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">EB</span>
+              </div>
+              <span className="font-semibold text-lg">ExtraBrain</span>
             </div>
-            <span className="font-semibold text-lg">ExtraBrain</span>
+            <div className="relative" ref={mainMenuRef}>
+              <button
+                type="button"
+                onClick={() => setMainMenuOpen((prev) => !prev)}
+                className="p-2 rounded-lg text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover transition-colors"
+                aria-label="Open main menu"
+              >
+                <Menu size={16} />
+              </button>
+              {mainMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
+                  <button
+                    type="button"
+                    onClick={handleExportNotes}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover"
+                  >
+                    <FolderDown size={14} />
+                    Export Notes
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
