@@ -338,6 +338,39 @@ export default function NoteEditor() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [hasChanges, saveNote]);
 
+  // Prevent browser/Milkdown from handling file drops (Tauri handles them natively)
+  // Use capture phase to intercept before Milkdown/ProseMirror processes the drop
+  useEffect(() => {
+    const container = editorContainerRef.current;
+    if (!container) return;
+
+    const handleDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      // Prevent browser/Milkdown from handling file drops
+      // Tauri's native file-drop event will handle it instead
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    // Use capture phase to intercept before Milkdown processes the event
+    container.addEventListener('dragover', handleDragOver, { capture: true });
+    container.addEventListener('drop', handleDrop, { capture: true });
+
+    return () => {
+      container.removeEventListener('dragover', handleDragOver, { capture: true });
+      container.removeEventListener('drop', handleDrop, { capture: true });
+    };
+  }, []);
+
   if (!note) {
     return null;
   }
