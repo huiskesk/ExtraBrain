@@ -14,7 +14,7 @@ mod server_config;
 
 use db::Database;
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{CustomMenuItem, Manager, Menu, MenuEntry, Submenu};
 
 // Application state shared between Tauri commands
 pub struct AppState {
@@ -24,9 +24,30 @@ pub struct AppState {
 fn main() {
     // Initialize the database for Tauri commands
     let db = Database::new().expect("Failed to initialize database");
+    let export_notes_item = CustomMenuItem::new("export_notes", "Export All Notes...");
+    let mut menu = Menu::os_default("ExtraBrain");
+    let mut file_menu_found = false;
+
+    for entry in menu.items.iter_mut() {
+        if let MenuEntry::Submenu(submenu) = entry {
+            if submenu.title == "File" {
+                submenu.inner = submenu.inner.clone().add_item(export_notes_item.clone());
+                file_menu_found = true;
+                break;
+            }
+        }
+    }
+
+    if !file_menu_found {
+        menu = menu.add_submenu(Submenu::new(
+            "File",
+            Menu::new().add_item(export_notes_item),
+        ));
+    }
 
     // Build and run the Tauri application
     tauri::Builder::default()
+        .menu(menu)
         // Add application state (database) accessible to all commands
         .manage(AppState { db: Mutex::new(db) })
         // Register all Tauri commands (called from React frontend)
@@ -88,6 +109,13 @@ fn main() {
             println!("HTTP API available at http://127.0.0.1:3847");
 
             Ok(())
+        })
+        .on_menu_event(|event| {
+            if event.menu_item_id() == "export_notes" {
+                if let Some(window) = event.window().app_handle().get_window("main") {
+                    let _ = window.emit("export-requested", ());
+                }
+            }
         })
         // Run the application
         .run(tauri::generate_context!())
