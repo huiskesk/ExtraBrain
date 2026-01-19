@@ -36,6 +36,8 @@ export default function Sidebar() {
     importPdf,
     moveNoteToNotebook,
     loadNotes,
+    dragState,
+    clearDragState,
   } = useStore();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -149,16 +151,14 @@ export default function Sidebar() {
   };
 
   // Drag and drop handlers for notebooks
+  // Uses store-based drag state instead of HTML5 dataTransfer (more reliable with Tauri)
   const handleDragOver = (e: React.DragEvent, notebookId: string) => {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-    if (e.dataTransfer.types.includes('Files')) {
-      return;
-    }
-    // Allow dragging to any notebook except the currently selected one
-    const sourceNotebookId = e.dataTransfer.getData('sourceNotebookId');
-    if (sourceNotebookId ? notebookId !== sourceNotebookId : notebookId !== selectedNotebookId) {
+
+    // Use store's drag state instead of dataTransfer (Tauri intercepts file drops)
+    if (dragState && notebookId !== dragState.sourceNotebookId) {
       setDragOverId(notebookId);
     }
   };
@@ -178,22 +178,15 @@ export default function Sidebar() {
     e.stopPropagation();
     setDragOverId(null);
 
-    // Try both data formats
-    const noteId = e.dataTransfer.getData('noteId') || e.dataTransfer.getData('text/plain');
-    const sourceNotebookId = e.dataTransfer.getData('sourceNotebookId');
+    // Use store's drag state instead of dataTransfer
+    console.log('Drop event - dragState:', dragState, 'to notebook:', notebookId);
 
-    console.log('Drop event - noteId:', noteId, 'to notebook:', notebookId);
-    console.log('Current notebook:', selectedNotebookId);
-
-    const isSameNotebook = sourceNotebookId
-      ? notebookId === sourceNotebookId
-      : notebookId === selectedNotebookId;
-
-    if (noteId && !isSameNotebook) {
+    if (dragState && notebookId !== dragState.sourceNotebookId) {
       console.log('Executing move...');
       try {
-        await moveNoteToNotebook(noteId, notebookId);
+        await moveNoteToNotebook(dragState.noteId, notebookId);
         console.log('Move completed successfully');
+        clearDragState();
         // Refresh the current notebook's notes
         if (selectedNotebookId) {
           await loadNotes(selectedNotebookId);
@@ -202,7 +195,7 @@ export default function Sidebar() {
         console.error('Move failed:', error);
       }
     } else {
-      console.log('Move skipped - noteId:', noteId, 'same notebook:', notebookId === selectedNotebookId);
+      console.log('Move skipped - no drag state or same notebook');
     }
   };
 

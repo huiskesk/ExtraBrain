@@ -120,11 +120,20 @@ export default function NoteEditor() {
 
   // Tauri native file drop handler
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenDrop: (() => void) | undefined;
+    let unlistenHover: (() => void) | undefined;
+    let unlistenCancelled: (() => void) | undefined;
+    let isProcessing = false;
 
     const setupListener = async () => {
       // Listen for Tauri's native file drop event
-      unlisten = await listen<string[]>("tauri://file-drop", async (event) => {
+      unlistenDrop = await listen<string[]>("tauri://file-drop", async (event) => {
+        // Prevent duplicate processing
+        if (isProcessing) {
+          console.log("Already processing, skipping duplicate event");
+          return;
+        }
+
         console.log("Tauri file-drop event:", event.payload);
 
         // Don't process if we're viewing a web clip or no note is selected
@@ -133,6 +142,7 @@ export default function NoteEditor() {
           return;
         }
 
+        isProcessing = true;
         setIsDraggingImage(false);
         dragCounter.current = 0;
 
@@ -148,16 +158,21 @@ export default function NoteEditor() {
             console.error("Failed to read image file:", error);
           }
         }
+
+        // Reset processing flag after a short delay
+        setTimeout(() => {
+          isProcessing = false;
+        }, 500);
       });
 
       // Also listen for hover events to show visual feedback
-      await listen("tauri://file-drop-hover", () => {
+      unlistenHover = await listen("tauri://file-drop-hover", () => {
         if (!isWebClipRef.current && noteIdRef.current) {
           setIsDraggingImage(true);
         }
       });
 
-      await listen("tauri://file-drop-cancelled", () => {
+      unlistenCancelled = await listen("tauri://file-drop-cancelled", () => {
         setIsDraggingImage(false);
         dragCounter.current = 0;
       });
@@ -166,9 +181,10 @@ export default function NoteEditor() {
     setupListener();
 
     return () => {
-      if (unlisten) {
-        unlisten();
-      }
+      // Clean up all listeners
+      if (unlistenDrop) unlistenDrop();
+      if (unlistenHover) unlistenHover();
+      if (unlistenCancelled) unlistenCancelled();
     };
   }, [insertImageMarkup]);
 

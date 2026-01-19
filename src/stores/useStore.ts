@@ -8,6 +8,12 @@ interface NoteCreatedEvent {
   note: Note;
 }
 
+// Drag state for note-to-notebook dragging (bypasses HTML5 dataTransfer issues with Tauri)
+interface DragState {
+  noteId: string;
+  sourceNotebookId: string;
+}
+
 interface Store {
   // State
   notebooks: Notebook[];
@@ -18,6 +24,7 @@ interface Store {
   isSearching: boolean;
   viewMode: ViewMode;
   isLoading: boolean;
+  dragState: DragState | null;
 
   // Notebook actions
   loadNotebooks: () => Promise<void>;
@@ -47,6 +54,10 @@ interface Store {
   // PDF
   importPdf: (notebookId: string, fileName: string, data: number[]) => Promise<Note>;
 
+  // Drag state management (for note-to-notebook dragging)
+  setDragState: (noteId: string, sourceNotebookId: string) => void;
+  clearDragState: () => void;
+
   // Event listener management
   setupEventListeners: () => Promise<UnlistenFn>;
 }
@@ -60,6 +71,7 @@ export const useStore = create<Store>((set, get) => ({
   isSearching: false,
   viewMode: "edit",
   isLoading: false,
+  dragState: null,
 
   // Notebook actions
   loadNotebooks: async () => {
@@ -271,6 +283,15 @@ export const useStore = create<Store>((set, get) => ({
       console.error("Failed to import PDF:", error);
       throw error;
     }
+  },
+
+  // Drag state management
+  setDragState: (noteId: string, sourceNotebookId: string) => {
+    set({ dragState: { noteId, sourceNotebookId } });
+  },
+
+  clearDragState: () => {
+    set({ dragState: null });
   },
 
   // Setup event listeners for backend events

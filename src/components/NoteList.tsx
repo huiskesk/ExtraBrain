@@ -29,6 +29,8 @@ export default function NoteList() {
     notebooks,
     isLoading,
     isSearching,
+    setDragState,
+    clearDragState,
   } = useStore();
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -101,11 +103,12 @@ export default function NoteList() {
 
   const handleDragStart = (e: React.DragEvent, noteId: string) => {
     console.log('Drag start:', noteId);
-    e.dataTransfer.setData('text/plain', noteId);
-    e.dataTransfer.setData('noteId', noteId);
+    // Use store state instead of dataTransfer (more reliable with Tauri)
     if (selectedNotebookId) {
-      e.dataTransfer.setData('sourceNotebookId', selectedNotebookId);
+      setDragState(noteId, selectedNotebookId);
     }
+    // Still set dataTransfer for visual drag feedback
+    e.dataTransfer.setData('text/plain', noteId);
     e.dataTransfer.effectAllowed = 'move';
     setDraggedNoteId(noteId);
   };
@@ -113,6 +116,7 @@ export default function NoteList() {
   const handleDragEnd = () => {
     console.log('Drag end');
     setDraggedNoteId(null);
+    clearDragState();
   };
 
   const getContentTypeIcon = (note: Note) => {
