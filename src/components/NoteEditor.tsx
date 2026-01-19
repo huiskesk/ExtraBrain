@@ -289,10 +289,20 @@ export default function NoteEditor() {
     await saveNote();
   }, [saveNote]);
 
-  const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setTitle(e.target.value);
-    setHasChanges(true);
-  }, []);
+  const handleTitleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!note) {
+        return;
+      }
+      const newTitle = e.target.value;
+      setTitle(newTitle);
+      titleRef.current = newTitle;
+      updateNote(note.id, { title: newTitle }).catch((error) => {
+        console.error("Failed to update note title:", error);
+      });
+    },
+    [note, updateNote]
+  );
 
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);
@@ -376,11 +386,6 @@ export default function NoteEditor() {
     return null;
   }
 
-  // PDF viewer
-  if (note.content_type === "pdf") {
-    return <PdfViewer noteId={note.id} />;
-  }
-
   return (
     <div
       ref={editorContainerRef}
@@ -398,111 +403,116 @@ export default function NoteEditor() {
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center gap-2">
-          {isWebClip && (
-            <div className="flex items-center gap-1.5 text-sm text-blue-600">
-              <Globe size={16} />
-              <span>Web Clip</span>
-            </div>
-          )}
-          {justSaved && (
-            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
-              <Check size={12} />
-              Saved
-            </span>
-          )}
-          {hasChanges && !justSaved && (
-            <span className="text-xs text-amber-500 bg-amber-50 px-2 py-0.5 rounded">
-              Unsaved
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isEditing && !isWebClip && (
-            <>
-              <button
-                onClick={handleImageUploadClick}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-              >
-                <ImageIcon size={16} />
-                Add Image
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".jpg,.jpeg,.png"
-                onChange={handleImageInputChange}
-                className="hidden"
-              />
-            </>
-          )}
-
-          {/* Save Button */}
-          {isEditing && (
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || isSaving}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                hasChanges
-                  ? "bg-brand-500 text-white hover:bg-brand-600"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
-              }`}
-            >
-              <Save size={14} />
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-          )}
-
-          {/* View/Edit Toggle */}
-          <button
-            onClick={handleToggleMode}
-            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+      {/* Title */}
+      <div className="flex-shrink-0 px-8 pt-8 pb-4 border-b border-gray-100">
+        <input
+          type="text"
+          value={title}
+          onChange={handleTitleChange}
+          placeholder="Note title"
+          className="w-full text-2xl font-bold text-gray-900 border-none outline-none placeholder:text-gray-300"
+        />
+        {note.source_url && (
+          <a
+            href={note.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 mt-2"
           >
-            {isEditing ? (
+            <ExternalLink size={12} />
+            {new URL(note.source_url).hostname}
+          </a>
+        )}
+      </div>
+
+      {note.content_type !== "pdf" && (
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center gap-2">
+            {isWebClip && (
+              <div className="flex items-center gap-1.5 text-sm text-blue-600">
+                <Globe size={16} />
+                <span>Web Clip</span>
+              </div>
+            )}
+            {justSaved && (
+              <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
+                <Check size={12} />
+                Saved
+              </span>
+            )}
+            {hasChanges && !justSaved && (
+              <span className="text-xs text-amber-500 bg-amber-50 px-2 py-0.5 rounded">
+                Unsaved
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isEditing && !isWebClip && (
               <>
-                <Eye size={16} />
-                View Note
-              </>
-            ) : (
-              <>
-                <Edit3 size={16} />
-                Edit
+                <button
+                  onClick={handleImageUploadClick}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                >
+                  <ImageIcon size={16} />
+                  Add Image
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png"
+                  onChange={handleImageInputChange}
+                  className="hidden"
+                />
               </>
             )}
-          </button>
+
+            {/* Save Button */}
+            {isEditing && (
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges || isSaving}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  hasChanges
+                    ? "bg-brand-500 text-white hover:bg-brand-600"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                }`}
+              >
+                <Save size={14} />
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            )}
+
+            {/* View/Edit Toggle */}
+            <button
+              onClick={handleToggleMode}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+            >
+              {isEditing ? (
+                <>
+                  <Eye size={16} />
+                  View Note
+                </>
+              ) : (
+                <>
+                  <Edit3 size={16} />
+                  Edit
+                </>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content Area */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {isEditing ? (
+        {note.content_type === "pdf" ? (
+          <div className="h-full">
+            <PdfViewer noteId={note.id} />
+          </div>
+        ) : isEditing ? (
           /* Edit Mode with Milkdown */
           <div className="h-full flex flex-col">
-            {/* Title Input */}
-            <div className="px-8 pt-8 pb-4 border-b border-gray-100">
-              <input
-                type="text"
-                value={title}
-                onChange={handleTitleChange}
-                placeholder="Note title"
-                className="w-full text-2xl font-bold text-gray-900 border-none outline-none placeholder:text-gray-300"
-              />
-              {note.source_url && (
-                <a
-                  href={note.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 mt-2"
-                >
-                  <ExternalLink size={12} />
-                  {new URL(note.source_url).hostname}
-                </a>
-              )}
-            </div>
-
             {/* Milkdown Editor */}
             <div className="flex-1 min-h-0 px-8 py-4 milkdown-editor-container">
               <MilkdownProvider>
@@ -517,24 +527,6 @@ export default function NoteEditor() {
         ) : (
           /* View Mode - Professional Article Rendering */
           <article className="article-view">
-            {/* Article Header */}
-            <header className="px-8 pt-8 pb-6 border-b border-gray-100">
-              <h1 className="text-3xl font-bold text-gray-900 leading-tight mb-3">
-                {title}
-              </h1>
-              {note.source_url && (
-                <a
-                  href={note.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
-                >
-                  <ExternalLink size={14} />
-                  View original at {new URL(note.source_url).hostname}
-                </a>
-              )}
-            </header>
-
             {/* Article Content */}
             <div className="px-8 py-6">
               {isWebClip || note.content_type === "html" ? (
