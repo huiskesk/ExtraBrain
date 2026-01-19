@@ -33,11 +33,10 @@ function App() {
     };
 
     const handleDrop = (event: DragEvent) => {
-      const wasDefaultPrevented = event.defaultPrevented;
-      event.preventDefault();
-      if (!wasDefaultPrevented) {
-        event.preventDefault();
+      if (event.defaultPrevented) {
+        return;
       }
+      event.preventDefault();
     };
 
     window.addEventListener("dragover", handleDragOver);
