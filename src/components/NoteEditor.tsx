@@ -4,16 +4,15 @@ import {
   Eye,
   Edit3,
   ExternalLink,
-  FileText,
   Globe,
   Save,
   Check,
   ImageIcon,
 } from "lucide-react";
-import type { Note } from "../types";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/tauri";
+import PdfViewer from "./PdfViewer";
 
 // Milkdown imports
 import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx } from "@milkdown/core";
@@ -379,7 +378,7 @@ export default function NoteEditor() {
 
   // PDF viewer
   if (note.content_type === "pdf") {
-    return <PdfViewer note={note} />;
+    return <PdfViewer noteId={note.id} />;
   }
 
   return (
@@ -580,29 +579,6 @@ export default function NoteEditor() {
             </div>
           </article>
         )}
-      </div>
-    </div>
-  );
-}
-
-function PdfViewer({ note }: { note: Note }) {
-  return (
-    <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <FileText className="text-red-500" />
-          {note.title}
-        </h1>
-      </div>
-      <div className="flex-1 flex items-center justify-center bg-gray-100 overflow-hidden">
-        <div className="text-center p-8">
-          <FileText size={64} className="mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600 mb-2">PDF Document</p>
-          <p className="text-sm text-gray-500">
-            PDF viewing will be available in a future update.
-          </p>
-          <p className="text-xs text-gray-400 mt-2">File: {note.pdf_path}</p>
-        </div>
       </div>
     </div>
   );
