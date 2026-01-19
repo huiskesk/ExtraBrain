@@ -74,7 +74,7 @@ interface ImageData {
 }
 
 export default function NoteEditor() {
-  const { notes, selectedNoteId, updateNote } = useStore();
+  const { notes, selectedNoteId, updateNote, dragState } = useStore();
 
   const note = useMemo(
     () => notes.find((n) => n.id === selectedNoteId),
@@ -102,6 +102,7 @@ export default function NoteEditor() {
   const noteIdRef = useRef<string | null>(null);
   const isWebClipRef = useRef(false);
   const contentTypeRef = useRef<string | undefined>(undefined);
+  const dragStateRef = useRef(dragState);
 
   // Update refs when state changes
   useEffect(() => {
@@ -112,6 +113,10 @@ export default function NoteEditor() {
     isWebClipRef.current = Boolean(note?.source_url);
     contentTypeRef.current = note?.content_type;
   }, [hasChanges, title, content, note?.id, note?.source_url, note?.content_type]);
+
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
 
   // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
@@ -151,6 +156,17 @@ export default function NoteEditor() {
         }
 
         console.log("Tauri file-drop event:", event.payload);
+        if (dragStateRef.current) {
+          console.log("Ignoring file drop during internal drag operation");
+          return;
+        }
+
+        const filePaths = Array.isArray(event.payload) ? event.payload : [];
+        if (filePaths.length === 0) {
+          console.log("Skipping file drop - empty payload");
+          return;
+        }
+
         const payloadKey = JSON.stringify(event.payload);
         const now = Date.now();
         if (
@@ -172,8 +188,6 @@ export default function NoteEditor() {
         isProcessing = true;
         setIsDraggingImage(false);
         dragCounter.current = 0;
-
-        const filePaths = event.payload;
 
         for (const filePath of filePaths) {
           try {
