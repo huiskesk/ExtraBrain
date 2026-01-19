@@ -56,6 +56,7 @@ export default function Sidebar() {
 
   const menuRef = useRef<HTMLDivElement>(null);
   const mainMenuRef = useRef<HTMLDivElement>(null);
+  const isExporting = useRef(false);
 
   // Close menu on click outside or Escape key
   useEffect(() => {
@@ -190,7 +191,17 @@ export default function Sidebar() {
     let unlisten: (() => void) | undefined;
 
     listen("export-requested", () => {
-      void handleExportNotes();
+      if (isExporting.current) {
+        return;
+      }
+      isExporting.current = true;
+      void (async () => {
+        try {
+          await handleExportNotes();
+        } finally {
+          isExporting.current = false;
+        }
+      })();
     })
       .then((cleanup) => {
         unlisten = cleanup;
