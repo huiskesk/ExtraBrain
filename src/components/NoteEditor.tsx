@@ -44,7 +44,11 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
         // This allows our Tauri file-drop listener to handle image drops exclusively
         ctx.set(editorViewOptionsCtx, {
           handleDrop: (_view, event) => {
-            if (event.dataTransfer?.types.includes('Files')) {
+            const hasFiles =
+              (event.dataTransfer?.files?.length ?? 0) > 0 ||
+              Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
+
+            if (hasFiles) {
               return true; // Tell editor to ignore file drops
             }
             return false; // Allow other drops (e.g., text) to be handled normally
@@ -88,6 +92,7 @@ export default function NoteEditor() {
   const dragCounter = useRef(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastDropEventRef = useRef<{ payload: string; timestamp: number } | null>(null);
 
   // Keep track of current note id to detect changes
   const currentNoteIdRef = useRef<string | null>(null);
@@ -146,6 +151,17 @@ export default function NoteEditor() {
         }
 
         console.log("Tauri file-drop event:", event.payload);
+        const payloadKey = JSON.stringify(event.payload);
+        const now = Date.now();
+        if (
+          lastDropEventRef.current &&
+          lastDropEventRef.current.payload === payloadKey &&
+          now - lastDropEventRef.current.timestamp < 300
+        ) {
+          console.log("Duplicate file-drop payload detected, ignoring");
+          return;
+        }
+        lastDropEventRef.current = { payload: payloadKey, timestamp: now };
 
         // Don't process if we're viewing a web clip or no note is selected
         if (isWebClipRef.current || !noteIdRef.current) {
