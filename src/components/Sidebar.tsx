@@ -12,7 +12,7 @@ import {
   Menu,
   FolderDown,
 } from "lucide-react";
-import { open } from "@tauri-apps/api/dialog";
+import { open, message } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 import { invoke } from "@tauri-apps/api/tauri";
@@ -180,8 +180,16 @@ export default function Sidebar() {
     if (selected && typeof selected === "string") {
       try {
         await invoke("export_notes_to_directory", { path: selected });
+        await message("Your notes have been successfully exported.", {
+          title: "Export Complete",
+          type: "info",
+        });
       } catch (error) {
         console.error("Failed to export notes:", error);
+        await message(error.toString(), {
+          title: "Export Failed",
+          type: "error",
+        });
       }
     }
     setMainMenuOpen(false);
