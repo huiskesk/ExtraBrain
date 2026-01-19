@@ -155,10 +155,13 @@ export default function Sidebar() {
   const handleDragOver = (e: React.DragEvent, notebookId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
 
-    // Use store's drag state instead of dataTransfer (Tauri intercepts file drops)
-    if (dragState && notebookId !== dragState.sourceNotebookId) {
+    const draggedNoteId = e.dataTransfer.getData("text/plain") || dragState?.noteId;
+    const sourceNotebookId = dragState?.sourceNotebookId;
+
+    // Use store's drag state or dataTransfer (Tauri intercepts file drops)
+    if (draggedNoteId && notebookId !== sourceNotebookId) {
       setDragOverId(notebookId);
     }
   };
@@ -178,14 +181,13 @@ export default function Sidebar() {
     e.stopPropagation();
     setDragOverId(null);
 
-    console.log("Drop detected on notebook:", notebookId);
-    // Use store's drag state instead of dataTransfer
-    console.log("Drop event - dragState:", dragState, "to notebook:", notebookId);
+    const droppedNoteId = e.dataTransfer.getData("text/plain") || dragState?.noteId;
+    const sourceNotebookId = dragState?.sourceNotebookId;
 
-    if (dragState && notebookId !== dragState.sourceNotebookId) {
+    if (droppedNoteId && notebookId !== sourceNotebookId) {
       console.log("Executing move...");
       try {
-        await moveNoteToNotebook(dragState.noteId, notebookId);
+        await moveNoteToNotebook(droppedNoteId, notebookId);
         console.log("Move completed successfully");
         // Refresh the current notebook's notes
         if (selectedNotebookId) {
@@ -196,11 +198,13 @@ export default function Sidebar() {
       } finally {
         clearDragState();
       }
+    } else if (!droppedNoteId) {
+      console.log("Move skipped - no note id available");
     } else {
-      console.log("Move skipped - no drag state or same notebook");
-      if (dragState) {
-        clearDragState();
-      }
+      console.log("Move skipped - same notebook");
+    }
+    if (dragState) {
+      clearDragState();
     }
   };
 
@@ -253,10 +257,7 @@ export default function Sidebar() {
                       : "hover:bg-sidebar-hover"
                   }`}
                   onClick={() => selectNotebook(notebook.id)}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    handleDragOver(e, notebook.id);
-                  }}
+                  onDragOver={(e) => handleDragOver(e, notebook.id)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, notebook.id)}
                 >
