@@ -178,25 +178,26 @@ export default function Sidebar() {
     e.stopPropagation();
     setDragOverId(null);
 
+    console.log("Drop detected on notebook:", notebookId);
     // Use store's drag state instead of dataTransfer
-    console.log('Drop event - dragState:', dragState, 'to notebook:', notebookId);
+    console.log("Drop event - dragState:", dragState, "to notebook:", notebookId);
 
     if (dragState && notebookId !== dragState.sourceNotebookId) {
-      console.log('Executing move...');
+      console.log("Executing move...");
       try {
         await moveNoteToNotebook(dragState.noteId, notebookId);
-        console.log('Move completed successfully');
+        console.log("Move completed successfully");
         // Refresh the current notebook's notes
         if (selectedNotebookId) {
           await loadNotes(selectedNotebookId);
         }
       } catch (error) {
-        console.error('Move failed:', error);
+        console.error("Move failed:", error);
       } finally {
         clearDragState();
       }
     } else {
-      console.log('Move skipped - no drag state or same notebook');
+      console.log("Move skipped - no drag state or same notebook");
       if (dragState) {
         clearDragState();
       }
@@ -252,7 +253,10 @@ export default function Sidebar() {
                       : "hover:bg-sidebar-hover"
                   }`}
                   onClick={() => selectNotebook(notebook.id)}
-                  onDragOver={(e) => handleDragOver(e, notebook.id)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    handleDragOver(e, notebook.id);
+                  }}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, notebook.id)}
                 >
