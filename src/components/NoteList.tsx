@@ -116,7 +116,7 @@ export default function NoteList() {
   const handleDragEnd = () => {
     console.log('Drag end');
     setDraggedNoteId(null);
-    clearDragState();
+    setTimeout(() => clearDragState(), 0);
   };
 
   const getContentTypeIcon = (note: Note) => {

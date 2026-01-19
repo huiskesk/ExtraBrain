@@ -186,16 +186,20 @@ export default function Sidebar() {
       try {
         await moveNoteToNotebook(dragState.noteId, notebookId);
         console.log('Move completed successfully');
-        clearDragState();
         // Refresh the current notebook's notes
         if (selectedNotebookId) {
           await loadNotes(selectedNotebookId);
         }
       } catch (error) {
         console.error('Move failed:', error);
+      } finally {
+        clearDragState();
       }
     } else {
       console.log('Move skipped - no drag state or same notebook');
+      if (dragState) {
+        clearDragState();
+      }
     }
   };
 
