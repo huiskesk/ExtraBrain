@@ -16,7 +16,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/tauri";
 
 // Milkdown imports
-import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
@@ -38,6 +38,17 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
         ctx.set(defaultValueCtx, initialContent);
         ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
           onChangeRef.current(markdown);
+        });
+        // Disable Milkdown's built-in drop handling for files
+        // Returning true tells ProseMirror "this event is handled, don't process it"
+        // This allows our Tauri file-drop listener to handle image drops exclusively
+        ctx.set(editorViewOptionsCtx, {
+          handleDrop: (_view, event) => {
+            if (event.dataTransfer?.types.includes('Files')) {
+              return true; // Tell editor to ignore file drops
+            }
+            return false; // Allow other drops (e.g., text) to be handled normally
+          },
         });
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -337,39 +348,6 @@ export default function NoteEditor() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [hasChanges, saveNote]);
-
-  // Prevent browser/Milkdown from handling file drops (Tauri handles them natively)
-  // Use capture phase to intercept before Milkdown/ProseMirror processes the drop
-  useEffect(() => {
-    const container = editorContainerRef.current;
-    if (!container) return;
-
-    const handleDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes('Files')) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-
-    const handleDrop = (e: DragEvent) => {
-      // Prevent browser/Milkdown from handling file drops
-      // Tauri's native file-drop event will handle it instead
-      if (e.dataTransfer?.types.includes('Files')) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-      }
-    };
-
-    // Use capture phase to intercept before Milkdown processes the event
-    container.addEventListener('dragover', handleDragOver, { capture: true });
-    container.addEventListener('drop', handleDrop, { capture: true });
-
-    return () => {
-      container.removeEventListener('dragover', handleDragOver, { capture: true });
-      container.removeEventListener('drop', handleDrop, { capture: true });
-    };
-  }, []);
 
   if (!note) {
     return null;
