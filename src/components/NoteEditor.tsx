@@ -15,7 +15,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 import PdfViewer from "./PdfViewer";
 
 // Milkdown imports
-import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
@@ -37,21 +37,6 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
         ctx.set(defaultValueCtx, initialContent);
         ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
           onChangeRef.current(markdown);
-        });
-        // Disable Milkdown's built-in drop handling for files
-        // Returning true tells ProseMirror "this event is handled, don't process it"
-        // This allows our Tauri file-drop listener to handle image drops exclusively
-        ctx.set(editorViewOptionsCtx, {
-          handleDrop: (_view, event) => {
-            const hasFiles =
-              (event.dataTransfer?.files?.length ?? 0) > 0 ||
-              Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
-
-            if (hasFiles) {
-              return true; // Tell editor to ignore file drops
-            }
-            return false; // Allow other drops (e.g., text) to be handled normally
-          },
         });
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
