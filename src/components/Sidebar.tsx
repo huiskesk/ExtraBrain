@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useStore } from "../stores/useStore";
 import {
   Book,
@@ -13,6 +13,7 @@ import {
   FolderDown,
 } from "lucide-react";
 import { open } from "@tauri-apps/api/dialog";
+import { listen } from "@tauri-apps/api/event";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 import { invoke } from "@tauri-apps/api/tauri";
 
@@ -169,7 +170,7 @@ export default function Sidebar() {
     }
   };
 
-  const handleExportNotes = async () => {
+  const handleExportNotes = useCallback(async () => {
     const selected = await open({
       directory: true,
       multiple: false,
@@ -183,7 +184,27 @@ export default function Sidebar() {
       }
     }
     setMainMenuOpen(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen("export-requested", () => {
+      void handleExportNotes();
+    })
+      .then((cleanup) => {
+        unlisten = cleanup;
+      })
+      .catch((error) => {
+        console.error("Failed to listen for export-requested event:", error);
+      });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [handleExportNotes]);
 
   const handleCopyToken = async () => {
     if (!extensionToken) return;
