@@ -362,6 +362,33 @@ impl Database {
         notes.collect()
     }
 
+    pub fn get_all_notes(&self) -> Result<Vec<Note>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
+                    created_at, updated_at, is_pinned, is_archived
+             FROM notes
+             ORDER BY updated_at DESC"
+        )?;
+
+        let notes = stmt.query_map([], |row| {
+            Ok(Note {
+                id: row.get(0)?,
+                notebook_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                content_type: row.get(4)?,
+                source_url: row.get(5)?,
+                pdf_path: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                is_pinned: row.get(9)?,
+                is_archived: row.get(10)?,
+            })
+        })?;
+
+        notes.collect()
+    }
+
     pub fn update_note(&self, input: UpdateNote) -> Result<()> {
         let now = Utc::now().to_rfc3339();
 
