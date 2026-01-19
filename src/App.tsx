@@ -27,6 +27,28 @@ function App() {
     };
   }, [loadNotebooks, setupEventListeners]);
 
+  useEffect(() => {
+    const handleDragOver = (event: DragEvent) => {
+      event.preventDefault();
+    };
+
+    const handleDrop = (event: DragEvent) => {
+      const wasDefaultPrevented = event.defaultPrevented;
+      event.preventDefault();
+      if (!wasDefaultPrevented) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, []);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-100">
       {/* Sidebar - Notebooks - Fixed width, full height, independent scroll */}
