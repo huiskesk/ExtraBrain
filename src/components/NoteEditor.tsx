@@ -19,7 +19,6 @@ import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
-import { upload, uploadConfig } from "@milkdown/plugin-upload";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 
 interface MilkdownEditorProps {
@@ -30,14 +29,6 @@ interface MilkdownEditorProps {
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
 const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
 
-const readFileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(reader.result as string), false);
-    reader.addEventListener("error", () => reject(reader.error), false);
-    reader.readAsDataURL(file);
-  });
-
 function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -47,41 +38,6 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
       .config((ctx) => {
         ctx.set(rootCtx, root);
         ctx.set(defaultValueCtx, initialContent);
-        const existingUploadConfig = ctx.get(uploadConfig.key);
-        ctx.set(uploadConfig.key, {
-          ...existingUploadConfig,
-          uploader: async (files, schema) => {
-            const images: File[] = [];
-            for (let i = 0; i < files.length; i += 1) {
-              const file = files.item(i);
-              if (!file) continue;
-              const mimeType = file.type.toLowerCase();
-              if (!mimeType.startsWith("image/")) continue;
-              if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) continue;
-              images.push(file);
-            }
-
-            if (images.length === 0) {
-              return [];
-            }
-
-            const { image } = schema.nodes;
-            if (!image) {
-              return [];
-            }
-
-            const data = await Promise.all(
-              images.map(async (img) => ({
-                alt: img.name,
-                src: await readFileAsDataUrl(img),
-              }))
-            );
-
-            return data
-              .map(({ alt, src }) => image.createAndFill({ src, alt }))
-              .filter((node): node is NonNullable<typeof node> => Boolean(node));
-          },
-        });
         ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
           onChangeRef.current(markdown);
         });
@@ -91,7 +47,6 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .use(commonmark as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .use(upload as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .use(nord as any);
   }, [initialContent]);
