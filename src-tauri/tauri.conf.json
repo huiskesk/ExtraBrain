@@ -41,6 +41,13 @@
       "path": {
         "all": true
       },
+      "protocol": {
+        "all": true,
+        "asset": true,
+        "assetScope": [
+          "$HOME/.extrabrain/**"
+        ]
+      },
       "shell": {
         "open": true
       }
@@ -71,7 +78,7 @@
       "targets": "all"
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: blob: data: https:;"
     },
     "windows": [
       {
