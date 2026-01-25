@@ -354,6 +354,87 @@ export default function NoteEditor() {
     e.target.value = "";
   }, [insertImageFile]);
 
+  const isFileDragEvent = useCallback((event: React.DragEvent) => {
+    const types = Array.from(event.dataTransfer.types || []);
+    return types.includes("Files");
+  }, []);
+
+  const handleDragEnter = useCallback(
+    (event: React.DragEvent) => {
+      if (useStore.getState().dragState) {
+        return;
+      }
+      if (isWebClipRef.current || !noteIdRef.current) {
+        return;
+      }
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      dragCounter.current += 1;
+      setIsDraggingImage(true);
+    },
+    [isFileDragEvent]
+  );
+
+  const handleDragOver = useCallback(
+    (event: React.DragEvent) => {
+      if (useStore.getState().dragState) {
+        return;
+      }
+      if (isWebClipRef.current || !noteIdRef.current) {
+        return;
+      }
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    },
+    [isFileDragEvent]
+  );
+
+  const handleDragLeave = useCallback(
+    (event: React.DragEvent) => {
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      dragCounter.current = Math.max(0, dragCounter.current - 1);
+      if (dragCounter.current === 0) {
+        setIsDraggingImage(false);
+      }
+    },
+    [isFileDragEvent]
+  );
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      if (useStore.getState().dragState) {
+        return;
+      }
+      if (isWebClipRef.current || !noteIdRef.current) {
+        return;
+      }
+      if (!isFileDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      setIsDraggingImage(false);
+      dragCounter.current = 0;
+
+      const files = Array.from(event.dataTransfer.files || []);
+      if (files.length === 0) {
+        return;
+      }
+
+      for (const file of files) {
+        insertImageFile(file);
+      }
+    },
+    [insertImageFile, isFileDragEvent]
+  );
+
   // Keyboard shortcut for save (Cmd/Ctrl + S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -377,6 +458,10 @@ export default function NoteEditor() {
     <div
       ref={editorContainerRef}
       className="flex-1 flex flex-col bg-white h-full overflow-hidden relative"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       {/* Image Drop Zone Overlay */}
       {isDraggingImage && (
