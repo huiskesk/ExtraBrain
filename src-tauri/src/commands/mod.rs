@@ -63,6 +63,7 @@ pub fn create_note(
     mut content: String,
     content_type: String,
     source_url: Option<String>,
+    tags: Option<Vec<String>>,
 ) -> Result<Note, String> {
     if content_type == "html" {
         content = sanitize_html(&content);
@@ -74,6 +75,7 @@ pub fn create_note(
         content,
         content_type,
         source_url,
+        tags: tags.unwrap_or_default(),
     })
     .map_err(|e| e.to_string())
 }
@@ -98,6 +100,7 @@ pub fn update_note(
     content: Option<String>,
     is_pinned: Option<bool>,
     is_archived: Option<bool>,
+    tags: Option<Vec<String>>,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let sanitized_content = if let Some(content) = content {
@@ -119,6 +122,7 @@ pub fn update_note(
         content: sanitized_content,
         is_pinned,
         is_archived,
+        tags,
     })
     .map_err(|e| e.to_string())
 }
@@ -184,6 +188,7 @@ pub fn save_web_clip(
         content: sanitized_content,
         content_type: "html".to_string(),
         source_url: Some(source_url),
+        tags: Vec::new(),
     })
     .map_err(|e| e.to_string())
 }

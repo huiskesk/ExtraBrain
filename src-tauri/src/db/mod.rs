@@ -28,6 +28,7 @@ pub struct Note {
     pub updated_at: String,
     pub is_pinned: bool,
     pub is_archived: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,6 +54,7 @@ pub struct CreateNote {
     pub content: String,
     pub content_type: String,
     pub source_url: Option<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,6 +64,7 @@ pub struct UpdateNote {
     pub content: Option<String>,
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
+    pub tags: Option<Vec<String>>,
 }
 
 pub struct Database {
@@ -124,8 +127,23 @@ impl Database {
                 FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS tags (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            );
+
+            CREATE TABLE IF NOT EXISTS note_tags (
+                note_id TEXT NOT NULL,
+                tag_id TEXT NOT NULL,
+                PRIMARY KEY (note_id, tag_id),
+                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id);
             CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
+            CREATE INDEX IF NOT EXISTS idx_note_tags_note_id ON note_tags(note_id);
+            CREATE INDEX IF NOT EXISTS idx_note_tags_tag_id ON note_tags(tag_id);
 
             -- Full-text search
             CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
@@ -295,6 +313,8 @@ impl Database {
 
         println!("Created note: {} in notebook {}", input.title, input.notebook_id);
 
+        self.set_note_tags(&id, &input.tags)?;
+
         Ok(Note {
             id,
             notebook_id: input.notebook_id,
@@ -307,11 +327,12 @@ impl Database {
             updated_at: now,
             is_pinned: false,
             is_archived: false,
+            tags: input.tags,
         })
     }
 
     pub fn get_note(&self, id: &str) -> Result<Note> {
-        self.conn.query_row(
+        let mut note = self.conn.query_row(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
                     created_at, updated_at, is_pinned, is_archived
              FROM notes WHERE id = ?1",
@@ -329,9 +350,13 @@ impl Database {
                     updated_at: row.get(8)?,
                     is_pinned: row.get(9)?,
                     is_archived: row.get(10)?,
+                    tags: Vec::new(),
                 })
             },
-        )
+        )?;
+
+        note.tags = self.fetch_tags_for_note(id)?;
+        Ok(note)
     }
 
     pub fn get_notes_by_notebook(&self, notebook_id: &str) -> Result<Vec<Note>> {
@@ -356,10 +381,16 @@ impl Database {
                 updated_at: row.get(8)?,
                 is_pinned: row.get(9)?,
                 is_archived: row.get(10)?,
+                tags: Vec::new(),
             })
         })?;
 
-        notes.collect()
+        let mut notes: Vec<Note> = notes.collect::<Result<Vec<_>>>()?;
+        for note in &mut notes {
+            note.tags = self.fetch_tags_for_note(&note.id)?;
+        }
+
+        Ok(notes)
     }
 
     pub fn get_all_notes(&self) -> Result<Vec<Note>> {
@@ -383,10 +414,16 @@ impl Database {
                 updated_at: row.get(8)?,
                 is_pinned: row.get(9)?,
                 is_archived: row.get(10)?,
+                tags: Vec::new(),
             })
         })?;
 
-        notes.collect()
+        let mut notes: Vec<Note> = notes.collect::<Result<Vec<_>>>()?;
+        for note in &mut notes {
+            note.tags = self.fetch_tags_for_note(&note.id)?;
+        }
+
+        Ok(notes)
     }
 
     pub fn update_note(&self, input: UpdateNote) -> Result<()> {
@@ -415,6 +452,9 @@ impl Database {
                 "UPDATE notes SET is_archived = ?1, updated_at = ?2 WHERE id = ?3",
                 params![is_archived, now, input.id],
             )?;
+        }
+        if let Some(tags) = input.tags {
+            self.set_note_tags(&input.id, &tags)?;
         }
 
         println!("Updated note: {}", input.id);
@@ -468,10 +508,16 @@ impl Database {
                 updated_at: row.get(8)?,
                 is_pinned: row.get(9)?,
                 is_archived: row.get(10)?,
+                tags: Vec::new(),
             })
         })?;
 
-        notes.collect()
+        let mut notes: Vec<Note> = notes.collect::<Result<Vec<_>>>()?;
+        for note in &mut notes {
+            note.tags = self.fetch_tags_for_note(&note.id)?;
+        }
+
+        Ok(notes)
     }
 
     // PDF operations
@@ -515,6 +561,7 @@ impl Database {
             updated_at: now,
             is_pinned: false,
             is_archived: false,
+            tags: Vec::new(),
         })
     }
 
@@ -527,5 +574,56 @@ impl Database {
         } else {
             Err(rusqlite::Error::QueryReturnedNoRows)
         }
+    }
+
+    fn fetch_tags_for_note(&self, note_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.name
+             FROM tags t
+             JOIN note_tags nt ON nt.tag_id = t.id
+             WHERE nt.note_id = ?1
+             ORDER BY t.name ASC",
+        )?;
+
+        let tags = stmt
+            .query_map(params![note_id], |row| row.get(0))?
+            .collect::<Result<Vec<String>>>()?;
+
+        Ok(tags)
+    }
+
+    fn set_note_tags(&self, note_id: &str, tags: &[String]) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM note_tags WHERE note_id = ?1",
+            params![note_id],
+        )?;
+
+        for tag_name in tags {
+            let tag_id = self.get_or_create_tag_id(tag_name)?;
+            self.conn.execute(
+                "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                params![note_id, tag_id],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn get_or_create_tag_id(&self, tag_name: &str) -> Result<String> {
+        if let Ok(id) = self.conn.query_row(
+            "SELECT id FROM tags WHERE name = ?1",
+            params![tag_name],
+            |row| row.get(0),
+        ) {
+            return Ok(id);
+        }
+
+        let id = Uuid::new_v4().to_string();
+        self.conn.execute(
+            "INSERT INTO tags (id, name) VALUES (?1, ?2)",
+            params![id, tag_name],
+        )?;
+
+        Ok(id)
     }
 }
