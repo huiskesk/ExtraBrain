@@ -70,6 +70,7 @@ fn main() {
             commands::import_pdf,
             commands::get_pdf_data,
             commands::export_notes_to_directory,
+            commands::import_enex,
             // Web clip commands (also available via HTTP API)
             commands::save_web_clip,
             commands::get_extension_token,

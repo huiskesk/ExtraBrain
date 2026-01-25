@@ -58,6 +58,18 @@ pub struct CreateNote {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CreateImportedNote {
+    pub notebook_id: String,
+    pub title: String,
+    pub content: String,
+    pub content_type: String,
+    pub source_url: Option<String>,
+    pub tags: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateNote {
     pub id: String,
     pub title: Option<String>,
@@ -329,6 +341,29 @@ impl Database {
             is_archived: false,
             tags: input.tags,
         })
+    }
+
+    pub fn create_imported_note(&self, input: CreateImportedNote) -> Result<()> {
+        let id = Uuid::new_v4().to_string();
+
+        self.conn.execute(
+            "INSERT INTO notes (id, notebook_id, title, content, content_type, source_url, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                id,
+                input.notebook_id,
+                input.title,
+                input.content,
+                input.content_type,
+                input.source_url,
+                input.created_at,
+                input.updated_at
+            ],
+        )?;
+
+        self.set_note_tags(&id, &input.tags)?;
+
+        Ok(())
     }
 
     pub fn get_note(&self, id: &str) -> Result<Note> {
