@@ -31,7 +31,12 @@
         "removeFile": true,
         "renameFile": true,
         "exists": true,
-        "scope": ["$APP/**", "$DOCUMENT/**", "$DOWNLOAD/**"]
+        "scope": [
+          "$APP/**",
+          "$DOCUMENT/**",
+          "$DOWNLOAD/**",
+          "$HOME/.extrabrain/**"
+        ]
       },
       "path": {
         "all": true
