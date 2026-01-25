@@ -41,6 +41,12 @@
       "path": {
         "all": true
       },
+      "protocol": {
+        "asset": true,
+        "assetScope": [
+          "$HOME/.extrabrain/**"
+        ]
+      },
       "shell": {
         "open": true
       }
