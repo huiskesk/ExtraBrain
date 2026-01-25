@@ -6,6 +6,7 @@ use crate::sanitize::sanitize_html;
 use crate::server_config;
 use chrono::{DateTime, Utc};
 use quick_xml::de::from_str;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -213,7 +214,8 @@ pub fn import_enex(state: State<AppState>, file_path: String) -> Result<usize, S
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "Untitled".to_string());
         let raw_content = note.content.unwrap_or_default();
-        let content = sanitize_html(&raw_content);
+        let cleaned_content = clean_enex_content(&raw_content);
+        let content = sanitize_html(&cleaned_content);
 
         let created_at = parse_enex_datetime(note.created.as_deref()).unwrap_or_else(current_time);
         let updated_at = parse_enex_datetime(note.updated.as_deref())
@@ -440,4 +442,30 @@ fn parse_enex_datetime(value: Option<&str>) -> Option<String> {
     DateTime::parse_from_str(raw, "%Y%m%dT%H%M%SZ")
         .ok()
         .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
+}
+
+fn clean_enex_content(raw: &str) -> String {
+    let xml_decl_re =
+        Regex::new(r"(?s)<\?xml.*?\?>").expect("regex should compile: xml declaration");
+    let doctype_re =
+        Regex::new(r"(?s)<!DOCTYPE.*?>").expect("regex should compile: doctype");
+    let en_note_re =
+        Regex::new(r"(?is)</?en-note[^>]*>").expect("regex should compile: en-note tag");
+    let hidden_div_re = Regex::new(
+        r#"(?is)<div[^>]*style\s*=\s*["'][^"']*display\s*:\s*none[^"']*["'][^>]*>.*?</div>"#,
+    )
+    .expect("regex should compile: hidden div");
+    let en_media_re =
+        Regex::new(r"(?is)<en-media[^>]*?/>").expect("regex should compile: en-media");
+
+    let placeholder =
+        r#"<div style="padding: 10px; background: #eee; border: 1px solid #ccc;">[Image Attachment Placeholder]</div>"#;
+
+    let mut cleaned = raw.to_string();
+    cleaned = xml_decl_re.replace_all(&cleaned, "").to_string();
+    cleaned = doctype_re.replace_all(&cleaned, "").to_string();
+    cleaned = en_note_re.replace_all(&cleaned, "").to_string();
+    cleaned = hidden_div_re.replace_all(&cleaned, "").to_string();
+    cleaned = en_media_re.replace_all(&cleaned, placeholder).to_string();
+    cleaned
 }
