@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/tauri";
+import { convertFileSrc, invoke } from "@tauri-apps/api/tauri";
 import PdfViewer from "./PdfViewer";
 
 // Milkdown imports
@@ -28,6 +28,19 @@ interface MilkdownEditorProps {
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
 const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
+
+function processContentImages(htmlString: string): string {
+  return htmlString.replace(
+    /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (match, src: string) => {
+      if (src.startsWith("/")) {
+        const convertedSrc = convertFileSrc(src);
+        return match.replace(src, convertedSrc);
+      }
+      return match;
+    }
+  );
+}
 
 function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorProps) {
   const onChangeRef = useRef(onChange);
@@ -103,7 +116,11 @@ export default function NoteEditor() {
 
   // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
-  const sanitizedContent = useMemo(() => sanitizeHtml(content), [content]);
+  const processedContent = useMemo(() => processContentImages(content), [content]);
+  const sanitizedContent = useMemo(
+    () => sanitizeHtml(processedContent),
+    [processedContent]
+  );
 
   // Function to insert image into content
   const insertImageMarkup = useCallback((base64Data: string, fileName: string) => {
