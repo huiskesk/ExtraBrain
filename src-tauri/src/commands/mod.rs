@@ -537,11 +537,18 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, String>) -> String 
                 .map(|value| value.as_str().to_lowercase());
             if let Some(hash) = hash {
                 if let Some(path) = media_map.get(&hash) {
-                    return format!(r#"<img src="{}" />"#, path);
+                    let asset_src = to_asset_src(path);
+                    return format!(r#"<img src="{}" />"#, asset_src);
                 }
             }
             String::new()
         })
         .to_string();
     cleaned
+}
+
+fn to_asset_src(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let trimmed = normalized.trim_start_matches('/');
+    format!("asset://localhost/{}", trimmed)
 }
