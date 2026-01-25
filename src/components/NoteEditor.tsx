@@ -256,8 +256,8 @@ export default function NoteEditor() {
       setTitle(note.title);
       setContent(note.content);
       setHasChanges(false);
-      // Web clips default to view mode, regular notes to edit mode
-      setIsEditing(!note.source_url);
+      // Web clips and HTML content default to view mode, regular notes to edit mode
+      setIsEditing(!(note.source_url || note.content_type === "html"));
       // Reset drag state when switching notes
       setIsDraggingImage(false);
       dragCounter.current = 0;
