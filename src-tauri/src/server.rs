@@ -211,6 +211,7 @@ async fn save_clip(
             content: sanitized_content,
             content_type: "html".to_string(),
             source_url: payload.source_url,
+            tags: Vec::new(),
         })
         .map_err(|e| {
             (

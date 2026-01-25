@@ -24,6 +24,7 @@ pub struct AppState {
 fn main() {
     // Initialize the database for Tauri commands
     let db = Database::new().expect("Failed to initialize database");
+    println!("Database initialized with tag support.");
     let export_notes_item = CustomMenuItem::new("export_notes", "Export All Notes...");
     let mut menu = Menu::os_default("ExtraBrain");
     let mut file_menu_found = false;
