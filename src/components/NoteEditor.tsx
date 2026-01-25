@@ -12,6 +12,7 @@ import {
 import { sanitizeHtml } from "../utils/sanitizeHtml";
 import { listen } from "@tauri-apps/api/event";
 import { convertFileSrc, invoke } from "@tauri-apps/api/tauri";
+import { homeDir } from "@tauri-apps/api/path";
 import PdfViewer from "./PdfViewer";
 
 // Milkdown imports
@@ -28,16 +29,67 @@ interface MilkdownEditorProps {
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
 const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
+const LOCAL_ASSET_PREFIX = "asset://localhost/";
+const FILE_PREFIX = "file://";
 
-function processContentImages(htmlString: string): string {
+function normalizePathForCompare(value: string): string {
+  let normalized = value.replace(/\\/g, "/").replace(/\/+/g, "/");
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  normalized = normalized.replace(/^([A-Za-z]):/, (_, drive: string) => `${drive.toLowerCase()}:`);
+  return normalized;
+}
+
+function normalizeLocalImageSrc(src: string): string | null {
+  let candidate = src.trim();
+
+  if (candidate.startsWith(LOCAL_ASSET_PREFIX)) {
+    candidate = candidate.slice(LOCAL_ASSET_PREFIX.length);
+    if (!candidate.startsWith("/") && !/^[A-Za-z]:/.test(candidate)) {
+      candidate = `/${candidate}`;
+    }
+  } else if (candidate.startsWith(FILE_PREFIX)) {
+    candidate = candidate.slice(FILE_PREFIX.length);
+    if (candidate.startsWith("localhost/")) {
+      candidate = candidate.slice("localhost".length);
+    }
+    if (candidate.startsWith("/") && /^[A-Za-z]:/.test(candidate.slice(1))) {
+      candidate = candidate.slice(1);
+    } else if (!candidate.startsWith("/") && !/^[A-Za-z]:/.test(candidate)) {
+      candidate = `/${candidate}`;
+    }
+  } else if (!candidate.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(candidate)) {
+    return null;
+  }
+
+  return candidate.replace(/\\/g, "/");
+}
+
+function processContentImages(htmlString: string, allowedRoot: string | null): string {
+  if (!allowedRoot) {
+    return htmlString;
+  }
+
+  const normalizedRoot = normalizePathForCompare(allowedRoot);
   return htmlString.replace(
     /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
     (match, src: string) => {
-      if (src.startsWith("/")) {
-        const convertedSrc = convertFileSrc(src);
-        return match.replace(src, convertedSrc);
+      const candidatePath = normalizeLocalImageSrc(src);
+      if (!candidatePath) {
+        return match;
       }
-      return match;
+
+      const normalizedCandidate = normalizePathForCompare(candidatePath);
+      if (
+        normalizedCandidate !== normalizedRoot &&
+        !normalizedCandidate.startsWith(`${normalizedRoot}/`)
+      ) {
+        return match;
+      }
+
+      const convertedSrc = convertFileSrc(candidatePath);
+      return match.replace(src, convertedSrc);
     }
   );
 }
@@ -91,6 +143,7 @@ export default function NoteEditor() {
   const [justSaved, setJustSaved] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
+  const [extrabrainRoot, setExtrabrainRoot] = useState<string | null>(null);
   const dragCounter = useRef(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,7 +169,28 @@ export default function NoteEditor() {
 
   // Determine if this is a web clip (has source_url) - always render as HTML
   const isWebClip = Boolean(note?.source_url);
-  const processedContent = useMemo(() => processContentImages(content), [content]);
+  useEffect(() => {
+    let isMounted = true;
+    homeDir()
+      .then((homePath) => {
+        if (!isMounted) {
+          return;
+        }
+        const normalizedHome = homePath.replace(/\\/g, "/").replace(/\/$/, "");
+        setExtrabrainRoot(`${normalizedHome}/.extrabrain`);
+      })
+      .catch((error) => {
+        console.error("Failed to resolve home directory:", error);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const processedContent = useMemo(
+    () => processContentImages(content, extrabrainRoot),
+    [content, extrabrainRoot]
+  );
   const sanitizedContent = useMemo(
     () => sanitizeHtml(processedContent),
     [processedContent]
