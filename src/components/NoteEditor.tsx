@@ -19,6 +19,7 @@ import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
+import { upload } from "@milkdown/plugin-upload";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 
 interface MilkdownEditorProps {
@@ -43,6 +44,8 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
       .use(listener as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .use(commonmark as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .use(upload as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .use(nord as any);
   }, [initialContent]);
