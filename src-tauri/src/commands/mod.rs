@@ -5,8 +5,10 @@ use crate::db::{
 use crate::sanitize::sanitize_html;
 use crate::server_config;
 use chrono::{DateTime, Utc};
+use base64::Engine;
 use quick_xml::de::from_str;
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -181,6 +183,20 @@ struct EnexNote {
     updated: Option<String>,
     #[serde(rename = "tag", default)]
     tags: Vec<String>,
+    #[serde(rename = "resource", default)]
+    resources: Vec<EnexResource>,
+}
+
+#[derive(serde::Deserialize)]
+struct EnexResource {
+    data: Option<EnexResourceData>,
+    mime: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct EnexResourceData {
+    #[serde(rename = "$value")]
+    value: String,
 }
 
 #[tauri::command]
@@ -198,6 +214,9 @@ pub fn import_enex(state: State<AppState>, file_path: String) -> Result<usize, S
         from_str(&file_contents).map_err(|e| format!("Failed to parse ENEX: {}", e))?;
 
     let db = state.db.lock().map_err(|e| e.to_string())?;
+    let attachments_dir = db.data_dir().join("attachments");
+    std::fs::create_dir_all(&attachments_dir)
+        .map_err(|e| format!("Failed to create attachments directory: {}", e))?;
     let notebook = db
         .create_notebook(CreateNotebook {
             name: file_name,
@@ -214,7 +233,8 @@ pub fn import_enex(state: State<AppState>, file_path: String) -> Result<usize, S
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "Untitled".to_string());
         let raw_content = note.content.unwrap_or_default();
-        let cleaned_content = clean_enex_content(&raw_content);
+        let media_map = extract_enex_resources(&note.resources, &attachments_dir);
+        let cleaned_content = clean_enex_content(&raw_content, &media_map);
         let content = sanitize_html(&cleaned_content);
 
         let created_at = parse_enex_datetime(note.created.as_deref()).unwrap_or_else(current_time);
@@ -444,7 +464,50 @@ fn parse_enex_datetime(value: Option<&str>) -> Option<String> {
         .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
 }
 
-fn clean_enex_content(raw: &str) -> String {
+fn extract_enex_resources(
+    resources: &[EnexResource],
+    attachments_dir: &Path,
+) -> HashMap<String, String> {
+    let mut media_map = HashMap::new();
+    for resource in resources {
+        let mime = match resource.mime.as_deref() {
+            Some(mime) => mime.trim(),
+            None => continue,
+        };
+
+        let extension = match mime {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => continue,
+        };
+
+        let data = match resource.data.as_ref().map(|data| data.value.as_str()) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let encoded = data.split_whitespace().collect::<String>();
+        let decoded = match base64::engine::general_purpose::STANDARD.decode(encoded) {
+            Ok(bytes) => bytes,
+            Err(_) => continue,
+        };
+
+        let hash = format!("{:x}", md5::compute(&decoded));
+        let file_path = attachments_dir.join(format!("{}.{}", hash, extension));
+        if !file_path.exists() {
+            if std::fs::write(&file_path, &decoded).is_err() {
+                continue;
+            }
+        }
+
+        media_map.insert(hash, file_path.to_string_lossy().to_string());
+    }
+    media_map
+}
+
+fn clean_enex_content(raw: &str, media_map: &HashMap<String, String>) -> String {
     let xml_decl_re =
         Regex::new(r"(?s)<\?xml.*?\?>").expect("regex should compile: xml declaration");
     let doctype_re =
@@ -455,17 +518,30 @@ fn clean_enex_content(raw: &str) -> String {
         r#"(?is)<div[^>]*style\s*=\s*["'][^"']*display\s*:\s*none[^"']*["'][^>]*>.*?</div>"#,
     )
     .expect("regex should compile: hidden div");
-    let en_media_re =
-        Regex::new(r"(?is)<en-media[^>]*?/>").expect("regex should compile: en-media");
-
-    let placeholder =
-        r#"<div style="padding: 10px; background: #eee; border: 1px solid #ccc;">[Image Attachment Placeholder]</div>"#;
+    let en_media_re = Regex::new(r#"(?is)<en-media\b[^>]*>"#)
+        .expect("regex should compile: en-media");
+    let hash_re = Regex::new(r#"(?is)hash\s*=\s*["']([^"']+)["']"#)
+        .expect("regex should compile: en-media hash");
 
     let mut cleaned = raw.to_string();
     cleaned = xml_decl_re.replace_all(&cleaned, "").to_string();
     cleaned = doctype_re.replace_all(&cleaned, "").to_string();
     cleaned = en_note_re.replace_all(&cleaned, "").to_string();
     cleaned = hidden_div_re.replace_all(&cleaned, "").to_string();
-    cleaned = en_media_re.replace_all(&cleaned, placeholder).to_string();
+    cleaned = en_media_re
+        .replace_all(&cleaned, |caps: &regex::Captures| {
+            let tag = &caps[0];
+            let hash = hash_re
+                .captures(tag)
+                .and_then(|capture| capture.get(1))
+                .map(|value| value.as_str().to_lowercase());
+            if let Some(hash) = hash {
+                if let Some(path) = media_map.get(&hash) {
+                    return format!(r#"<img src="{}" />"#, path);
+                }
+            }
+            String::new()
+        })
+        .to_string();
     cleaned
 }
