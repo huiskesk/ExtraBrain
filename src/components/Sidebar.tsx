@@ -39,6 +39,7 @@ export default function Sidebar() {
     importPdf,
     moveNoteToNotebook,
     loadNotes,
+    loadNotebooks,
     dragState,
     clearDragState,
   } = useStore();
@@ -53,6 +54,7 @@ export default function Sidebar() {
   const [extensionToken, setExtensionToken] = useState<string | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
+  const [isImportingEnex, setIsImportingEnex] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const mainMenuRef = useRef<HTMLDivElement>(null);
@@ -168,6 +170,40 @@ export default function Sidebar() {
       const fileData = await readBinaryFile(selected);
       const fileName = selected.split("/").pop() || "document.pdf";
       await importPdf(selectedNotebookId, fileName, Array.from(fileData));
+    }
+  };
+
+  const handleImportEnex = async () => {
+    if (isImportingEnex) return;
+
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Evernote", extensions: ["enex"] }],
+    });
+
+    if (selected && typeof selected === "string") {
+      setIsImportingEnex(true);
+      try {
+        const importedCount = await invoke<number>("import_enex", {
+          filePath: selected,
+        });
+        await loadNotebooks();
+        await message(
+          `Imported ${importedCount} note${importedCount === 1 ? "" : "s"} successfully.`,
+          {
+            title: "Evernote Import Complete",
+            type: "info",
+          }
+        );
+      } catch (error) {
+        console.error("Failed to import ENEX:", error);
+        await message(error.toString(), {
+          title: "Evernote Import Failed",
+          type: "error",
+        });
+      } finally {
+        setIsImportingEnex(false);
+      }
     }
   };
 
@@ -339,6 +375,14 @@ export default function Sidebar() {
           >
             <Upload size={16} />
             <span>Import PDF</span>
+          </button>
+          <button
+            onClick={handleImportEnex}
+            disabled={isImportingEnex}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Upload size={16} />
+            <span>{isImportingEnex ? "Importing..." : "Import Evernote (.enex)"}</span>
           </button>
         </div>
       </div>

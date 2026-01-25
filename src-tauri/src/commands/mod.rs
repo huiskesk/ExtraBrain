@@ -1,9 +1,11 @@
 use crate::AppState;
 use crate::db::{
-    CreateNotebook, CreateNote, Note, Notebook, UpdateNote, UpdateNotebook,
+    CreateImportedNote, CreateNotebook, CreateNote, Note, Notebook, UpdateNote, UpdateNotebook,
 };
 use crate::sanitize::sanitize_html;
 use crate::server_config;
+use chrono::{DateTime, Utc};
+use quick_xml::de::from_str;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -162,6 +164,77 @@ pub fn import_pdf(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.import_pdf(&notebook_id, &file_name, &data)
         .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize)]
+struct EnexExport {
+    #[serde(rename = "note", default)]
+    notes: Vec<EnexNote>,
+}
+
+#[derive(serde::Deserialize)]
+struct EnexNote {
+    title: Option<String>,
+    content: Option<String>,
+    created: Option<String>,
+    updated: Option<String>,
+    #[serde(rename = "tag", default)]
+    tags: Vec<String>,
+}
+
+#[tauri::command]
+pub fn import_enex(state: State<AppState>, file_path: String) -> Result<usize, String> {
+    let file_name = Path::new(&file_path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("Imported Notes")
+        .to_string();
+
+    let file_contents =
+        std::fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let export: EnexExport =
+        from_str(&file_contents).map_err(|e| format!("Failed to parse ENEX: {}", e))?;
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let notebook = db
+        .create_notebook(CreateNotebook {
+            name: file_name,
+            color: None,
+            icon: None,
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut imported_count = 0;
+
+    for note in export.notes {
+        let title = note
+            .title
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "Untitled".to_string());
+        let raw_content = note.content.unwrap_or_default();
+        let content = sanitize_html(&raw_content);
+
+        let created_at = parse_enex_datetime(note.created.as_deref()).unwrap_or_else(current_time);
+        let updated_at = parse_enex_datetime(note.updated.as_deref())
+            .unwrap_or_else(|| created_at.clone());
+
+        db.create_imported_note(CreateImportedNote {
+            notebook_id: notebook.id.clone(),
+            title,
+            content,
+            content_type: "html".to_string(),
+            source_url: None,
+            tags: note.tags,
+            created_at,
+            updated_at,
+        })
+        .map_err(|e| e.to_string())?;
+
+        imported_count += 1;
+    }
+
+    Ok(imported_count)
 }
 
 #[tauri::command]
@@ -352,4 +425,19 @@ fn unique_file_path(dir: &Path, base_name: &str, extension: &str) -> PathBuf {
         }
         counter += 1;
     }
+}
+
+fn current_time() -> String {
+    Utc::now().to_rfc3339()
+}
+
+fn parse_enex_datetime(value: Option<&str>) -> Option<String> {
+    let raw = value?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    DateTime::parse_from_str(raw, "%Y%m%dT%H%M%SZ")
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
 }
