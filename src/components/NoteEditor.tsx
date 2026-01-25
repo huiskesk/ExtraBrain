@@ -32,12 +32,13 @@ const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png"]);
 function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const initialContentRef = useRef(initialContent);
 
   useEditor((root) => {
     return Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, root);
-        ctx.set(defaultValueCtx, initialContent);
+        ctx.set(defaultValueCtx, initialContentRef.current);
         ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
           onChangeRef.current(markdown);
         });
@@ -49,7 +50,7 @@ function MilkdownEditorComponent({ initialContent, onChange }: MilkdownEditorPro
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .use(nord as any);
-  }, [initialContent]);
+  }, []);
 
   return <Milkdown />;
 }
