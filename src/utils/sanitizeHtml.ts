@@ -3,7 +3,6 @@ const BLOCKED_TAGS = [
   "style",
   "iframe",
   "object",
-  "embed",
   "link",
   "meta",
 ];
@@ -22,6 +21,13 @@ export function sanitizeHtml(html: string): string {
 
   BLOCKED_TAGS.forEach((tag) => {
     doc.querySelectorAll(tag).forEach((node) => node.remove());
+  });
+
+  doc.querySelectorAll("embed").forEach((node) => {
+    const type = node.getAttribute("type")?.toLowerCase();
+    if (type !== "application/pdf") {
+      node.remove();
+    }
   });
 
   doc.querySelectorAll("*").forEach((node) => {
