@@ -77,11 +77,14 @@ export const useStore = create<Store>((set, get) => ({
   loadNotebooks: async () => {
     try {
       const notebooks = await invoke<Notebook[]>("get_all_notebooks");
-      set({ notebooks });
+      const sortedNotebooks = [...notebooks].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      );
+      set({ notebooks: sortedNotebooks });
 
       // Auto-select first notebook if none selected
-      if (!get().selectedNotebookId && notebooks.length > 0) {
-        get().selectNotebook(notebooks[0].id);
+      if (!get().selectedNotebookId && sortedNotebooks.length > 0) {
+        get().selectNotebook(sortedNotebooks[0].id);
       }
     } catch (error) {
       console.error("Failed to load notebooks:", error);
@@ -91,7 +94,11 @@ export const useStore = create<Store>((set, get) => ({
   createNotebook: async (name: string, color?: string) => {
     try {
       const notebook = await invoke<Notebook>("create_notebook", { name, color });
-      set((state) => ({ notebooks: [...state.notebooks, notebook] }));
+      set((state) => ({
+        notebooks: [...state.notebooks, notebook].sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        ),
+      }));
       return notebook;
     } catch (error) {
       console.error("Failed to create notebook:", error);
@@ -103,9 +110,9 @@ export const useStore = create<Store>((set, get) => ({
     try {
       await invoke("update_notebook", { id, ...updates });
       set((state) => ({
-        notebooks: state.notebooks.map((nb) =>
-          nb.id === id ? { ...nb, ...updates } : nb
-        ),
+        notebooks: state.notebooks
+          .map((nb) => (nb.id === id ? { ...nb, ...updates } : nb))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
       }));
     } catch (error) {
       console.error("Failed to update notebook:", error);
