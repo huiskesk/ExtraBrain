@@ -464,10 +464,15 @@ fn parse_enex_datetime(value: Option<&str>) -> Option<String> {
         .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
 }
 
+struct MediaResource {
+    path: String,
+    mime: String,
+}
+
 fn extract_enex_resources(
     resources: &[EnexResource],
     attachments_dir: &Path,
-) -> HashMap<String, String> {
+) -> HashMap<String, MediaResource> {
     let mut media_map = HashMap::new();
     for resource in resources {
         let mime = match resource.mime.as_deref() {
@@ -480,6 +485,7 @@ fn extract_enex_resources(
             "image/png" => "png",
             "image/gif" => "gif",
             "image/webp" => "webp",
+            "application/pdf" => "pdf",
             _ => continue,
         };
 
@@ -502,12 +508,18 @@ fn extract_enex_resources(
             }
         }
 
-        media_map.insert(hash, file_path.to_string_lossy().to_string());
+        media_map.insert(
+            hash,
+            MediaResource {
+                path: file_path.to_string_lossy().to_string(),
+                mime: mime.to_string(),
+            },
+        );
     }
     media_map
 }
 
-fn clean_enex_content(raw: &str, media_map: &HashMap<String, String>) -> String {
+fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> String {
     let xml_decl_re =
         Regex::new(r"(?s)<\?xml.*?\?>").expect("regex should compile: xml declaration");
     let doctype_re =
@@ -536,9 +548,14 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, String>) -> String 
                 .and_then(|capture| capture.get(1))
                 .map(|value| value.as_str().to_lowercase());
             if let Some(hash) = hash {
-                if let Some(path) = media_map.get(&hash) {
-                    let asset_src = to_asset_src(path);
-                    return format!(r#"<img src="{}" />"#, asset_src);
+                if let Some(media) = media_map.get(&hash) {
+                    if media.mime.starts_with("image/") {
+                        let asset_src = to_asset_src(&media.path);
+                        return format!(r#"<img src="{}" />"#, asset_src);
+                    }
+                    if media.mime == "application/pdf" {
+                        return format!(r#"<embed src="{}" type="application/pdf" style="width: 100%; min-height: 600px;" />"#, media.path);
+                    }
                 }
             }
             String::new()

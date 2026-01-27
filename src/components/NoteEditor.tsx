@@ -73,8 +73,8 @@ function processContentImages(htmlString: string, allowedRoot: string | null): s
 
   const normalizedRoot = normalizePathForCompare(allowedRoot);
   return htmlString.replace(
-    /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
-    (match, src: string) => {
+    /<(img|embed)\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (match, _tag: string, src: string) => {
       const candidatePath = normalizeLocalImageSrc(src);
       if (!candidatePath) {
         return match;
