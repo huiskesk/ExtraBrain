@@ -26,6 +26,14 @@ const NOTEBOOK_COLORS = [
   "#ec4899", // pink
   "#06b6d4", // cyan
   "#f97316", // orange
+  "#14b8a6", // teal
+  "#10b981", // emerald
+  "#84cc16", // lime
+  "#eab308", // yellow
+  "#f43f5e", // rose
+  "#6366f1", // indigo
+  "#a855f7", // violet
+  "#0ea5e9", // sky
 ];
 
 export default function Sidebar() {
@@ -49,6 +57,7 @@ export default function Sidebar() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [colorMenuOpenId, setColorMenuOpenId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [extensionToken, setExtensionToken] = useState<string | null>(null);
@@ -59,6 +68,7 @@ export default function Sidebar() {
   const menuRef = useRef<HTMLDivElement>(null);
   const mainMenuRef = useRef<HTMLDivElement>(null);
   const isExporting = useRef(false);
+  const lastCreatedColorRef = useRef<string | null>(null);
 
   // Close menu on click outside or Escape key
   useEffect(() => {
@@ -86,6 +96,12 @@ export default function Sidebar() {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
+  }, [menuOpenId]);
+
+  useEffect(() => {
+    if (!menuOpenId) {
+      setColorMenuOpenId(null);
+    }
   }, [menuOpenId]);
 
   useEffect(() => {
@@ -136,8 +152,22 @@ export default function Sidebar() {
 
   const handleCreateNotebook = async () => {
     if (newNotebookName.trim()) {
-      const color = NOTEBOOK_COLORS[notebooks.length % NOTEBOOK_COLORS.length];
+      const mostRecentColor =
+        lastCreatedColorRef.current ??
+        [...notebooks]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .find((notebook) => notebook.color)?.color ??
+        null;
+      const lastColorIndex = mostRecentColor
+        ? NOTEBOOK_COLORS.findIndex((color) => color === mostRecentColor)
+        : -1;
+      const nextColorIndex =
+        lastColorIndex >= 0
+          ? (lastColorIndex + 1) % NOTEBOOK_COLORS.length
+          : 0;
+      const color = NOTEBOOK_COLORS[nextColorIndex];
       await createNotebook(newNotebookName.trim(), color);
+      lastCreatedColorRef.current = color;
       setNewNotebookName("");
       setIsCreating(false);
     }
@@ -149,6 +179,12 @@ export default function Sidebar() {
     }
     setEditingId(null);
     setEditingName("");
+  };
+
+  const handleNotebookColorChange = async (id: string, color: string) => {
+    await updateNotebook(id, { color });
+    setMenuOpenId(null);
+    setColorMenuOpenId(null);
   };
 
   const handleDeleteNotebook = async (id: string) => {
@@ -463,12 +499,47 @@ export default function Sidebar() {
                           setEditingId(notebook.id);
                           setEditingName(notebook.name);
                           setMenuOpenId(null);
+                          setColorMenuOpenId(null);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-hover"
                       >
                         <Edit2 size={14} />
                         Rename
                       </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setColorMenuOpenId(
+                            colorMenuOpenId === notebook.id ? null : notebook.id
+                          );
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-hover"
+                      >
+                        <div
+                          className="h-3 w-3 rounded-sm"
+                          style={{ backgroundColor: notebook.color || "#22c55e" }}
+                        />
+                        Change color
+                      </button>
+                      {colorMenuOpenId === notebook.id && (
+                        <div className="px-3 pb-2">
+                          <div className="grid grid-cols-6 gap-2">
+                            {NOTEBOOK_COLORS.map((colorOption) => (
+                              <button
+                                key={colorOption}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNotebookColorChange(notebook.id, colorOption);
+                                }}
+                                className="h-4 w-4 rounded-sm border border-gray-700 hover:scale-110 transition-transform"
+                                style={{ backgroundColor: colorOption }}
+                                aria-label={`Set notebook color ${colorOption}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {notebooks.length > 1 && (
                         <button
                           onClick={(e) => {
