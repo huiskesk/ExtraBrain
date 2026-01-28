@@ -8,6 +8,7 @@ import {
   Save,
   Check,
   ImageIcon,
+  Star,
 } from "lucide-react";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
 import { listen } from "@tauri-apps/api/event";
@@ -144,6 +145,9 @@ export default function NoteEditor() {
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
   const [extrabrainRoot, setExtrabrainRoot] = useState<string | null>(null);
+  const [rating, setRating] = useState(0);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const dragCounter = useRef(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -347,6 +351,9 @@ export default function NoteEditor() {
       setTitle(note.title);
       setContent(note.content);
       setHasChanges(false);
+      setRating(note.rating ?? 0);
+      setTags(note.tags ?? []);
+      setTagInput("");
       // Web clips and HTML content default to view mode, regular notes to edit mode
       setIsEditing(!(note.source_url || note.content_type === "html"));
       // Reset drag state when switching notes
@@ -390,6 +397,67 @@ export default function NoteEditor() {
     contentRef.current = newContent;
     setHasChanges(true);
   }, []);
+
+  const commitTagsUpdate = useCallback(
+    (nextTags: string[]) => {
+      if (!note) {
+        return;
+      }
+      setTags(nextTags);
+      updateNote(note.id, { tags: nextTags }).catch((error) => {
+        console.error("Failed to update tags:", error);
+      });
+    },
+    [note, updateNote]
+  );
+
+  const handleRatingChange = useCallback(
+    (nextRating: number) => {
+      if (!note) {
+        return;
+      }
+      setRating(nextRating);
+      updateNote(note.id, { rating: nextRating }).catch((error) => {
+        console.error("Failed to update rating:", error);
+      });
+    },
+    [note, updateNote]
+  );
+
+  const handleAddTags = useCallback(
+    (rawValue: string) => {
+      const candidates = rawValue
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (candidates.length === 0) {
+        return;
+      }
+
+      const existing = new Set(tags.map((tag) => tag.toLowerCase()));
+      const nextTags = [...tags];
+
+      for (const candidate of candidates) {
+        const lowered = candidate.toLowerCase();
+        if (!existing.has(lowered)) {
+          existing.add(lowered);
+          nextTags.push(candidate);
+        }
+      }
+
+      commitTagsUpdate(nextTags);
+      setTagInput("");
+    },
+    [commitTagsUpdate, tags]
+  );
+
+  const handleRemoveTag = useCallback(
+    (tagToRemove: string) => {
+      const nextTags = tags.filter((tag) => tag !== tagToRemove);
+      commitTagsUpdate(nextTags);
+    },
+    [commitTagsUpdate, tags]
+  );
 
   const isValidImageFile = useCallback((file: File) => {
     const type = file.type.toLowerCase();
@@ -587,6 +655,64 @@ export default function NoteEditor() {
             {new URL(note.source_url).hostname}
           </a>
         )}
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-1">
+            {Array.from({ length: 5 }, (_, index) => {
+              const starValue = index + 1;
+              const isActive = starValue <= rating;
+              return (
+                <button
+                  key={starValue}
+                  type="button"
+                  onClick={() => handleRatingChange(starValue)}
+                  className="rounded-full p-1 hover:bg-amber-50 transition-colors"
+                  aria-label={`Set rating to ${starValue}`}
+                >
+                  <Star
+                    size={18}
+                    className={isActive ? "text-amber-400 fill-amber-400" : "text-gray-300"}
+                  />
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+              >
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTag(tag)}
+                  className="text-gray-400 hover:text-gray-600"
+                  aria-label={`Remove tag ${tag}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(event) => setTagInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === ",") {
+                  event.preventDefault();
+                  handleAddTags(tagInput);
+                }
+              }}
+              onBlur={() => {
+                if (tagInput.trim()) {
+                  handleAddTags(tagInput);
+                }
+              }}
+              placeholder="Add tag"
+              className="min-w-[160px] border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            />
+          </div>
+        </div>
       </div>
 
       {note.content_type !== "pdf" && (
