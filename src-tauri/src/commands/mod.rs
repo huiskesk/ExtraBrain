@@ -68,6 +68,7 @@ pub fn create_note(
     mut content: String,
     content_type: String,
     source_url: Option<String>,
+    rating: Option<i32>,
     tags: Option<Vec<String>>,
 ) -> Result<Note, String> {
     if content_type == "html" {
@@ -80,6 +81,7 @@ pub fn create_note(
         content,
         content_type,
         source_url,
+        rating: rating.unwrap_or(0),
         tags: tags.unwrap_or_default(),
     })
     .map_err(|e| e.to_string())
@@ -105,6 +107,7 @@ pub fn update_note(
     content: Option<String>,
     is_pinned: Option<bool>,
     is_archived: Option<bool>,
+    rating: Option<i32>,
     tags: Option<Vec<String>>,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
@@ -127,6 +130,7 @@ pub fn update_note(
         content: sanitized_content,
         is_pinned,
         is_archived,
+        rating,
         tags,
     })
     .map_err(|e| e.to_string())
@@ -247,6 +251,7 @@ pub fn import_enex(state: State<AppState>, file_path: String) -> Result<usize, S
             content,
             content_type: "html".to_string(),
             source_url: None,
+            rating: 0,
             tags: note.tags,
             created_at,
             updated_at,
@@ -283,9 +288,29 @@ pub fn save_web_clip(
         content: sanitized_content,
         content_type: "html".to_string(),
         source_url: Some(source_url),
+        rating: 0,
         tags: Vec::new(),
     })
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_tag(state: State<AppState>, note_id: String, tag_name: String) -> Result<Vec<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.add_tag_to_note(&note_id, &tag_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_tag(state: State<AppState>, note_id: String, tag_name: String) -> Result<Vec<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.remove_tag_from_note(&note_id, &tag_name)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_all_tags(state: State<AppState>) -> Result<Vec<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_all_tags().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

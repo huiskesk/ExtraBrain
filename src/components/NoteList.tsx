@@ -287,6 +287,7 @@ function NoteCard({
   onMenuOpen,
   isMenuOpen,
 }: NoteCardProps) {
+  const tagPreview = note.tags?.slice(0, 3) ?? [];
   return (
     <div
       draggable
@@ -318,6 +319,28 @@ function NoteCard({
           <p className="text-xs text-gray-500 mt-1 line-clamp-2">
             {getPreviewText(note)}
           </p>
+          {(note.rating > 0 || tagPreview.length > 0) && (
+            <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+              {note.rating > 0 && (
+                <span className="inline-flex items-center gap-1 text-amber-500 font-medium">
+                  ★ {note.rating}
+                </span>
+              )}
+              {tagPreview.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600"
+                >
+                  {tag}
+                </span>
+              ))}
+              {note.tags.length > tagPreview.length && (
+                <span className="text-[10px] text-gray-400">
+                  +{note.tags.length - tagPreview.length}
+                </span>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
             <span>{format(parseISO(note.updated_at), "MMM d, yyyy")}</span>
             {note.source_url && (

@@ -35,7 +35,15 @@ interface Store {
 
   // Note actions
   loadNotes: (notebookId: string) => Promise<void>;
-  createNote: (notebookId: string, title?: string, content?: string, contentType?: string, sourceUrl?: string) => Promise<Note>;
+  createNote: (
+    notebookId: string,
+    title?: string,
+    content?: string,
+    contentType?: string,
+    sourceUrl?: string,
+    rating?: number,
+    tags?: string[]
+  ) => Promise<Note>;
   updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   selectNote: (id: string | null) => void;
@@ -159,7 +167,15 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  createNote: async (notebookId: string, title = "Untitled Note", content = "", contentType = "markdown", sourceUrl?: string) => {
+  createNote: async (
+    notebookId: string,
+    title = "Untitled Note",
+    content = "",
+    contentType = "markdown",
+    sourceUrl?: string,
+    rating = 0,
+    tags: string[] = []
+  ) => {
     try {
       const note = await invoke<Note>("create_note", {
         notebookId,
@@ -167,6 +183,8 @@ export const useStore = create<Store>((set, get) => ({
         content,
         contentType,
         sourceUrl,
+        rating,
+        tags,
       });
       set((state) => ({ notes: [note, ...state.notes] }));
       get().selectNote(note.id);

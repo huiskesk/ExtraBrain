@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, Result, params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::Utc;
@@ -28,6 +28,7 @@ pub struct Note {
     pub updated_at: String,
     pub is_pinned: bool,
     pub is_archived: bool,
+    pub rating: i32,
     pub tags: Vec<String>,
 }
 
@@ -54,6 +55,7 @@ pub struct CreateNote {
     pub content: String,
     pub content_type: String,
     pub source_url: Option<String>,
+    pub rating: i32,
     pub tags: Vec<String>,
 }
 
@@ -64,6 +66,7 @@ pub struct CreateImportedNote {
     pub content: String,
     pub content_type: String,
     pub source_url: Option<String>,
+    pub rating: i32,
     pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -76,6 +79,7 @@ pub struct UpdateNote {
     pub content: Option<String>,
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
+    pub rating: Option<i32>,
     pub tags: Option<Vec<String>>,
 }
 
@@ -136,6 +140,7 @@ impl Database {
                 updated_at TEXT NOT NULL,
                 is_pinned INTEGER DEFAULT 0,
                 is_archived INTEGER DEFAULT 0,
+                rating INTEGER DEFAULT 0,
                 FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
             );
 
@@ -180,6 +185,25 @@ impl Database {
             END;
             "
         )?;
+        self.ensure_notes_rating_column()?;
+        Ok(())
+    }
+
+    fn ensure_notes_rating_column(&self) -> Result<()> {
+        let mut stmt = self.conn.prepare("PRAGMA table_info(notes)")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<String>>>()?;
+        if !columns.iter().any(|name| name == "rating") {
+            self.conn.execute(
+                "ALTER TABLE notes ADD COLUMN rating INTEGER DEFAULT 0",
+                [],
+            )?;
+            self.conn.execute(
+                "UPDATE notes SET rating = 0 WHERE rating IS NULL",
+                [],
+            )?;
+        }
         Ok(())
     }
 
@@ -309,8 +333,8 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         self.conn.execute(
-            "INSERT INTO notes (id, notebook_id, title, content, content_type, source_url, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO notes (id, notebook_id, title, content, content_type, source_url, rating, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
                 input.notebook_id,
@@ -318,6 +342,7 @@ impl Database {
                 input.content,
                 input.content_type,
                 input.source_url,
+                input.rating,
                 now,
                 now
             ],
@@ -339,6 +364,7 @@ impl Database {
             updated_at: now,
             is_pinned: false,
             is_archived: false,
+            rating: input.rating,
             tags: input.tags,
         })
     }
@@ -347,8 +373,8 @@ impl Database {
         let id = Uuid::new_v4().to_string();
 
         self.conn.execute(
-            "INSERT INTO notes (id, notebook_id, title, content, content_type, source_url, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO notes (id, notebook_id, title, content, content_type, source_url, rating, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
                 input.notebook_id,
@@ -356,6 +382,7 @@ impl Database {
                 input.content,
                 input.content_type,
                 input.source_url,
+                input.rating,
                 input.created_at,
                 input.updated_at
             ],
@@ -369,7 +396,7 @@ impl Database {
     pub fn get_note(&self, id: &str) -> Result<Note> {
         let mut note = self.conn.query_row(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
-                    created_at, updated_at, is_pinned, is_archived
+                    created_at, updated_at, is_pinned, is_archived, rating
              FROM notes WHERE id = ?1",
             params![id],
             |row| {
@@ -385,6 +412,7 @@ impl Database {
                     updated_at: row.get(8)?,
                     is_pinned: row.get(9)?,
                     is_archived: row.get(10)?,
+                    rating: row.get(11)?,
                     tags: Vec::new(),
                 })
             },
@@ -397,10 +425,10 @@ impl Database {
     pub fn get_notes_by_notebook(&self, notebook_id: &str) -> Result<Vec<Note>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
-                    created_at, updated_at, is_pinned, is_archived
+                    created_at, updated_at, is_pinned, is_archived, rating
              FROM notes
              WHERE notebook_id = ?1 AND is_archived = 0
-             ORDER BY is_pinned DESC, updated_at DESC"
+             ORDER BY is_pinned DESC, rating DESC, updated_at DESC"
         )?;
 
         let notes = stmt.query_map(params![notebook_id], |row| {
@@ -416,6 +444,7 @@ impl Database {
                 updated_at: row.get(8)?,
                 is_pinned: row.get(9)?,
                 is_archived: row.get(10)?,
+                rating: row.get(11)?,
                 tags: Vec::new(),
             })
         })?;
@@ -431,7 +460,7 @@ impl Database {
     pub fn get_all_notes(&self) -> Result<Vec<Note>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
-                    created_at, updated_at, is_pinned, is_archived
+                    created_at, updated_at, is_pinned, is_archived, rating
              FROM notes
              ORDER BY updated_at DESC"
         )?;
@@ -449,6 +478,7 @@ impl Database {
                 updated_at: row.get(8)?,
                 is_pinned: row.get(9)?,
                 is_archived: row.get(10)?,
+                rating: row.get(11)?,
                 tags: Vec::new(),
             })
         })?;
@@ -488,6 +518,12 @@ impl Database {
                 params![is_archived, now, input.id],
             )?;
         }
+        if let Some(rating) = input.rating {
+            self.conn.execute(
+                "UPDATE notes SET rating = ?1, updated_at = ?2 WHERE id = ?3",
+                params![rating, now, input.id],
+            )?;
+        }
         if let Some(tags) = input.tags {
             self.set_note_tags(&input.id, &tags)?;
         }
@@ -523,7 +559,7 @@ impl Database {
         let search_query = format!("{}*", query);
         let mut stmt = self.conn.prepare(
             "SELECT n.id, n.notebook_id, n.title, n.content, n.content_type, n.source_url,
-                    n.pdf_path, n.created_at, n.updated_at, n.is_pinned, n.is_archived
+                    n.pdf_path, n.created_at, n.updated_at, n.is_pinned, n.is_archived, n.rating
              FROM notes n
              JOIN notes_fts fts ON n.rowid = fts.rowid
              WHERE notes_fts MATCH ?1 AND n.is_archived = 0
@@ -543,6 +579,7 @@ impl Database {
                 updated_at: row.get(8)?,
                 is_pinned: row.get(9)?,
                 is_archived: row.get(10)?,
+                rating: row.get(11)?,
                 tags: Vec::new(),
             })
         })?;
@@ -570,8 +607,8 @@ impl Database {
         let pdf_path_str = pdf_path.to_string_lossy().to_string();
 
         self.conn.execute(
-            "INSERT INTO notes (id, notebook_id, title, content, content_type, pdf_path, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO notes (id, notebook_id, title, content, content_type, pdf_path, rating, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
                 notebook_id,
@@ -579,6 +616,7 @@ impl Database {
                 format!("PDF Document: {}", file_name),
                 "pdf",
                 pdf_path_str,
+                0,
                 now,
                 now
             ],
@@ -596,6 +634,7 @@ impl Database {
             updated_at: now,
             is_pinned: false,
             is_archived: false,
+            rating: 0,
             tags: Vec::new(),
         })
     }
@@ -660,5 +699,43 @@ impl Database {
         )?;
 
         Ok(id)
+    }
+
+    pub fn add_tag_to_note(&self, note_id: &str, tag_name: &str) -> Result<Vec<String>> {
+        let trimmed = tag_name.trim();
+        if trimmed.is_empty() {
+            return self.fetch_tags_for_note(note_id);
+        }
+        let tag_id = self.get_or_create_tag_id(trimmed)?;
+        self.conn.execute(
+            "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+            params![note_id, tag_id],
+        )?;
+        self.fetch_tags_for_note(note_id)
+    }
+
+    pub fn remove_tag_from_note(&self, note_id: &str, tag_name: &str) -> Result<Vec<String>> {
+        let tag_id: Option<String> = self.conn.query_row(
+            "SELECT id FROM tags WHERE name = ?1",
+            params![tag_name],
+            |row| row.get(0),
+        ).optional()?;
+        if let Some(tag_id) = tag_id {
+            self.conn.execute(
+                "DELETE FROM note_tags WHERE note_id = ?1 AND tag_id = ?2",
+                params![note_id, tag_id],
+            )?;
+        }
+        self.fetch_tags_for_note(note_id)
+    }
+
+    pub fn get_all_tags(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT name FROM tags ORDER BY name ASC",
+        )?;
+        let tags = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<String>>>()?;
+        Ok(tags)
     }
 }

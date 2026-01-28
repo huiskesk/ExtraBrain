@@ -20,6 +20,8 @@ export interface Note {
   updated_at: string;
   is_pinned: boolean;
   is_archived: boolean;
+  rating: number;
+  tags: string[];
 }
 
 export interface CreateNoteInput {
@@ -28,6 +30,8 @@ export interface CreateNoteInput {
   content: string;
   content_type: "markdown" | "html" | "pdf";
   source_url?: string;
+  rating?: number;
+  tags?: string[];
 }
 
 export interface UpdateNoteInput {
@@ -36,6 +40,8 @@ export interface UpdateNoteInput {
   content?: string;
   is_pinned?: boolean;
   is_archived?: boolean;
+  rating?: number;
+  tags?: string[];
 }
 
 export interface CreateNotebookInput {
