@@ -64,6 +64,7 @@ fn main() {
             commands::create_note,
             commands::get_note,
             commands::get_notes_by_notebook,
+            commands::get_all_notes,
             commands::update_note,
             commands::delete_note,
             commands::move_note_to_notebook,
