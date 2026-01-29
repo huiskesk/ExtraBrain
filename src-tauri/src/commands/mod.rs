@@ -593,24 +593,26 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> 
 
 fn download_and_localize_images(html_content: String) -> String {
     let img_regex =
-        Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*["'](https?://[^"'>\s]+)["'][^>]*>"#)
+        Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*(['"])(https?://[^'">\s]+)\1[^>]*>"#)
             .expect("regex should compile: img src");
     let mut cache: HashMap<String, String> = HashMap::new();
 
     img_regex
         .replace_all(&html_content, |caps: &regex::Captures| {
             let tag = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-            let url = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            let url = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
+            println!("Found image tag match: {}", tag);
             if let Some(local_path) = cache.get(url) {
                 return tag.replace(url, local_path);
             }
 
+            println!("Attempting download: {}", url);
             let local_path = match download_image_to_attachments(url) {
                 Some(path) => {
                     cache.insert(url.to_string(), path.clone());
                     path
                 }
-                None => return tag.to_string(),
+                None => return format!("[DOWNLOAD_FAILED]{}", tag),
             };
 
             tag.replace(url, &local_path)
@@ -629,12 +631,29 @@ fn download_image_to_attachments(url: &str) -> Option<String> {
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .build()
         .ok()?;
-    let response = client.get(url).send().ok()?;
+    let response = match client.get(url).send() {
+        Ok(response) => response,
+        Err(error) => {
+            println!("Download failed (status: N/A) for {}: {}", url, error);
+            return None;
+        }
+    };
     if !response.status().is_success() {
+        println!(
+            "Download failed (status: {}) for {}",
+            response.status(),
+            url
+        );
         return None;
     }
+    println!(
+        "Download succeeded (status: {}) for {}",
+        response.status(),
+        url
+    );
 
     let content_type = response
         .headers()
