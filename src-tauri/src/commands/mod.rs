@@ -581,7 +581,8 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> 
                         return format!(r#"<img src="{}" />"#, asset_src);
                     }
                     if media.mime == "application/pdf" {
-                        return format!(r#"<embed src="{}" type="application/pdf" style="width: 100%; min-height: 600px;" />"#, media.path);
+                        let asset_src = to_asset_src(&media.path);
+                        return format!(r#"<embed src="{}" type="application/pdf" style="width: 100%; min-height: 600px;" />"#, asset_src);
                     }
                 }
             }
@@ -611,20 +612,21 @@ fn download_and_localize_images(html_content: String) -> String {
                 return tag.to_string();
             }
             println!("Found image tag match: {}", tag);
-            if let Some(local_path) = cache.get(url) {
-                return tag.replace(url, local_path);
+            if let Some(asset_path) = cache.get(url) {
+                return tag.replace(url, asset_path);
             }
 
             println!("Attempting download: {}", url);
-            let local_path = match download_image_to_attachments(url) {
+            let asset_path = match download_image_to_attachments(url) {
                 Some(path) => {
-                    cache.insert(url.to_string(), path.clone());
-                    path
+                    let asset_path = to_asset_src(&path);
+                    cache.insert(url.to_string(), asset_path.clone());
+                    asset_path
                 }
                 None => return format!("[DOWNLOAD_FAILED]{}", tag),
             };
 
-            tag.replace(url, &local_path)
+            tag.replace(url, &asset_path)
         })
         .to_string()
 }
