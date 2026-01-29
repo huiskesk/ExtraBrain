@@ -68,6 +68,7 @@ fn main() {
             commands::delete_note,
             commands::move_note_to_notebook,
             commands::search_notes,
+            commands::localize_note_images,
             commands::add_tag,
             commands::remove_tag,
             commands::get_all_tags,
