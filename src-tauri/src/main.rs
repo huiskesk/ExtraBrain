@@ -15,6 +15,7 @@ mod server_config;
 use db::Database;
 use std::sync::{Arc, Mutex};
 use tauri::{CustomMenuItem, Manager, Menu, MenuEntry, Submenu};
+use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 // Application state shared between Tauri commands
 pub struct AppState {
@@ -49,6 +50,7 @@ fn main() {
     // Build and run the Tauri application
     tauri::Builder::default()
         .menu(menu)
+        .plugin(WindowStateBuilder::default().build())
         // Add application state (database) accessible to all commands
         .manage(AppState { db: Mutex::new(db) })
         // Register all Tauri commands (called from React frontend)
