@@ -281,13 +281,13 @@ pub fn save_web_clip(
     content: String,
     source_url: String,
 ) -> Result<Note, String> {
-    let sanitized_content = sanitize_html(&content);
-    let localized_content = download_and_localize_images(sanitized_content);
+    let localized_content = download_and_localize_images(content);
+    let sanitized_content = sanitize_html(&localized_content);
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.create_note(CreateNote {
         notebook_id,
         title,
-        content: localized_content,
+        content: sanitized_content,
         content_type: "html".to_string(),
         source_url: Some(source_url),
         rating: 0,
@@ -592,15 +592,24 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> 
 }
 
 fn download_and_localize_images(html_content: String) -> String {
-    let img_regex =
-        Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*(['"])(https?://[^'">\s]+)\1[^>]*>"#)
-            .expect("regex should compile: img src");
+    let img_regex = Regex::new(
+        r#"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>"#,
+    )
+    .expect("regex should compile: img src");
     let mut cache: HashMap<String, String> = HashMap::new();
 
     img_regex
         .replace_all(&html_content, |caps: &regex::Captures| {
             let tag = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-            let url = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
+            let url = caps
+                .get(1)
+                .or_else(|| caps.get(2))
+                .or_else(|| caps.get(3))
+                .map(|m| m.as_str())
+                .unwrap_or_default();
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                return tag.to_string();
+            }
             println!("Found image tag match: {}", tag);
             if let Some(local_path) = cache.get(url) {
                 return tag.replace(url, local_path);
