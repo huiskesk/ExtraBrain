@@ -9,13 +9,11 @@ import {
   Check,
   ImageIcon,
   Star,
-  DownloadCloud,
 } from "lucide-react";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
 import { listen } from "@tauri-apps/api/event";
-import { convertFileSrc, invoke } from "@tauri-apps/api/tauri";
+import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { homeDir } from "@tauri-apps/api/path";
-import { message } from "@tauri-apps/api/dialog";
 import PdfViewer from "./PdfViewer";
 
 // Milkdown imports
@@ -145,7 +143,6 @@ export default function NoteEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
-  const [isLocalizingImages, setIsLocalizingImages] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
   const [extrabrainRoot, setExtrabrainRoot] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
@@ -401,49 +398,12 @@ export default function NoteEditor() {
     setHasChanges(true);
   }, []);
 
-  const handleDownloadImages = useCallback(async () => {
-    if (!note?.id || isLocalizingImages) {
-      return;
+  const handleContentClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("a")) {
+      event.preventDefault();
     }
-
-    setIsLocalizingImages(true);
-    try {
-      if (hasChangesRef.current) {
-        await saveNote();
-      }
-      const localizedContent = await invoke<string>("localize_note_images", {
-        noteId: note.id,
-      });
-      setContent(localizedContent);
-      contentRef.current = localizedContent;
-      setHasChanges(false);
-      hasChangesRef.current = false;
-      useStore.setState((state) => ({
-        notes: state.notes.map((currentNote) =>
-          currentNote.id === note.id
-            ? {
-                ...currentNote,
-                content: localizedContent,
-                updated_at: new Date().toISOString(),
-              }
-            : currentNote
-        ),
-      }));
-      setEditorKey((prev) => prev + 1);
-      await message("Images downloaded and saved locally.", {
-        title: "Download Complete",
-        type: "info",
-      });
-    } catch (error) {
-      console.error("Failed to download images:", error);
-      await message(error.toString(), {
-        title: "Download Failed",
-        type: "error",
-      });
-    } finally {
-      setIsLocalizingImages(false);
-    }
-  }, [isLocalizingImages, note?.id, saveNote]);
+  }, []);
 
   const commitTagsUpdate = useCallback(
     (nextTags: string[]) => {
@@ -702,19 +662,6 @@ export default function NoteEditor() {
               <ExternalLink size={12} />
               {new URL(note.source_url).hostname}
             </a>
-            <button
-              type="button"
-              onClick={handleDownloadImages}
-              disabled={isLocalizingImages}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                isLocalizingImages
-                  ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed"
-                  : "border-blue-200 text-blue-600 hover:bg-blue-50"
-              }`}
-            >
-              <DownloadCloud size={12} />
-              {isLocalizingImages ? "Downloading..." : "Download Images"}
-            </button>
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -906,6 +853,7 @@ export default function NoteEditor() {
                     prose-table:border-collapse prose-table:w-full
                     prose-th:border prose-th:border-gray-300 prose-th:bg-gray-50 prose-th:px-4 prose-th:py-2 prose-th:text-left
                     prose-td:border prose-td:border-gray-300 prose-td:px-4 prose-td:py-2"
+                  onClick={handleContentClick}
                   dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                 />
               ) : (

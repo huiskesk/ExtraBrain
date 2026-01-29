@@ -281,8 +281,7 @@ pub fn save_web_clip(
     content: String,
     source_url: String,
 ) -> Result<Note, String> {
-    let localized_content = download_and_localize_images(content);
-    let sanitized_content = sanitize_html(&localized_content);
+    let sanitized_content = sanitize_html(&content);
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.create_note(CreateNote {
         notebook_id,
