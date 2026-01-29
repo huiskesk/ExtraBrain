@@ -297,6 +297,24 @@ pub fn save_web_clip(
 }
 
 #[tauri::command]
+pub fn localize_note_images(state: State<AppState>, note_id: String) -> Result<String, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let note = db.get_note(&note_id).map_err(|e| e.to_string())?;
+    let localized_content = download_and_localize_images(note.content);
+    db.update_note(UpdateNote {
+        id: note_id,
+        title: None,
+        content: Some(localized_content.clone()),
+        is_pinned: None,
+        is_archived: None,
+        rating: None,
+        tags: None,
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(localized_content)
+}
+
+#[tauri::command]
 pub fn add_tag(state: State<AppState>, note_id: String, tag_name: String) -> Result<Vec<String>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.add_tag_to_note(&note_id, &tag_name).map_err(|e| e.to_string())
