@@ -18,6 +18,7 @@ interface Store {
   // State
   notebooks: Notebook[];
   notes: Note[];
+  allNotes: Note[];
   selectedNotebookId: string | null;
   selectedNoteId: string | null;
   searchQuery: string;
@@ -25,6 +26,7 @@ interface Store {
   viewMode: ViewMode;
   isLoading: boolean;
   dragState: DragState | null;
+  isHomeView: boolean;
 
   // Notebook actions
   loadNotebooks: () => Promise<void>;
@@ -35,6 +37,7 @@ interface Store {
 
   // Note actions
   loadNotes: (notebookId: string) => Promise<void>;
+  loadAllNotes: () => Promise<void>;
   createNote: (
     notebookId: string,
     title?: string,
@@ -59,6 +62,9 @@ interface Store {
   // View mode
   setViewMode: (mode: ViewMode) => void;
 
+  // Home
+  goHome: () => void;
+
   // PDF
   importPdf: (notebookId: string, fileName: string, data: number[]) => Promise<Note>;
 
@@ -73,6 +79,7 @@ interface Store {
 export const useStore = create<Store>((set, get) => ({
   notebooks: [],
   notes: [],
+  allNotes: [],
   selectedNotebookId: null,
   selectedNoteId: null,
   searchQuery: "",
@@ -80,6 +87,7 @@ export const useStore = create<Store>((set, get) => ({
   viewMode: "edit",
   isLoading: false,
   dragState: null,
+  isHomeView: true,
 
   // Notebook actions
   loadNotebooks: async () => {
@@ -167,6 +175,15 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  loadAllNotes: async () => {
+    try {
+      const notes = await invoke<Note[]>("get_all_notes");
+      set({ allNotes: notes });
+    } catch (error) {
+      console.error("Failed to load all notes:", error);
+    }
+  },
+
   createNote: async (
     notebookId: string,
     title = "Untitled Note",
@@ -186,7 +203,11 @@ export const useStore = create<Store>((set, get) => ({
         rating,
         tags,
       });
-      set((state) => ({ notes: [note, ...state.notes] }));
+      set((state) => ({
+        notes: [note, ...state.notes],
+        allNotes: [note, ...state.allNotes],
+        isHomeView: false,
+      }));
       get().selectNote(note.id);
       return note;
     } catch (error) {
@@ -202,6 +223,9 @@ export const useStore = create<Store>((set, get) => ({
         notes: state.notes.map((note) =>
           note.id === id ? { ...note, ...updates, updated_at: new Date().toISOString() } : note
         ),
+        allNotes: state.allNotes.map((note) =>
+          note.id === id ? { ...note, ...updates, updated_at: new Date().toISOString() } : note
+        ),
       }));
     } catch (error) {
       console.error("Failed to update note:", error);
@@ -215,7 +239,10 @@ export const useStore = create<Store>((set, get) => ({
       const { notes, selectedNoteId } = get();
       const newNotes = notes.filter((note) => note.id !== id);
 
-      set({ notes: newNotes });
+      set((state) => ({
+        notes: newNotes,
+        allNotes: state.allNotes.filter((note) => note.id !== id),
+      }));
 
       // If deleted note was selected, clear selection
       if (selectedNoteId === id) {
@@ -228,7 +255,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   selectNote: (id: string | null) => {
-    set({ selectedNoteId: id });
+    set({ selectedNoteId: id, isHomeView: false });
   },
 
   moveNoteToNotebook: async (noteId: string, notebookId: string) => {
@@ -243,6 +270,11 @@ export const useStore = create<Store>((set, get) => ({
           selectedNoteId: null,
         });
       }
+      set((state) => ({
+        allNotes: state.allNotes.map((note) =>
+          note.id === noteId ? { ...note, notebook_id: notebookId } : note
+        ),
+      }));
     } catch (error) {
       console.error("Failed to move note:", error);
       throw error;
@@ -251,7 +283,7 @@ export const useStore = create<Store>((set, get) => ({
 
   // Add a note from a Tauri event (triggered by Chrome extension via HTTP API)
   addNoteFromEvent: (note: Note) => {
-    const { selectedNotebookId, notes, isSearching } = get();
+    const { selectedNotebookId, notes, isSearching, allNotes } = get();
 
     // Only add to the list if we're viewing the notebook this note belongs to
     // and we're not in search mode
@@ -265,6 +297,9 @@ export const useStore = create<Store>((set, get) => ({
       }
     } else {
       console.log("Note received for different notebook:", note.notebook_id);
+    }
+    if (!allNotes.some((n) => n.id === note.id)) {
+      set((state) => ({ allNotes: [note, ...state.allNotes] }));
     }
   },
 
@@ -296,6 +331,10 @@ export const useStore = create<Store>((set, get) => ({
   // View mode
   setViewMode: (mode: ViewMode) => {
     set({ viewMode: mode });
+  },
+
+  goHome: () => {
+    set({ isHomeView: true, selectedNoteId: null });
   },
 
   // PDF

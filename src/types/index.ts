@@ -63,9 +63,11 @@ export type ViewMode = "edit" | "preview" | "split";
 export interface AppState {
   notebooks: Notebook[];
   notes: Note[];
+  allNotes: Note[];
   selectedNotebookId: string | null;
   selectedNoteId: string | null;
   searchQuery: string;
   isSearching: boolean;
   viewMode: ViewMode;
+  isHomeView: boolean;
 }

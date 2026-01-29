@@ -4,9 +4,10 @@ import Sidebar from "./components/Sidebar";
 import NoteList from "./components/NoteList";
 import NoteEditor from "./components/NoteEditor";
 import SearchBar from "./components/SearchBar";
+import Home from "./components/Home";
 
 function App() {
-  const { loadNotebooks, setupEventListeners, selectedNoteId } = useStore();
+  const { loadNotebooks, setupEventListeners, selectedNoteId, isHomeView } = useStore();
 
   useEffect(() => {
     // Load notebooks on startup
@@ -67,11 +68,7 @@ function App() {
 
       {/* Note Editor - Flexible width, full height, independent scroll */}
       <div className="flex-1 h-screen flex flex-col min-w-0 overflow-hidden">
-        {selectedNoteId ? (
-          <NoteEditor />
-        ) : (
-          <EmptyState />
-        )}
+        {isHomeView ? <Home /> : selectedNoteId ? <NoteEditor /> : <EmptyState />}
       </div>
     </div>
   );

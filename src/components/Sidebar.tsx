@@ -11,6 +11,7 @@ import {
   Upload,
   Menu,
   FolderDown,
+  Home,
 } from "lucide-react";
 import { open, message } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -50,6 +51,8 @@ export default function Sidebar() {
     loadNotebooks,
     dragState,
     clearDragState,
+    isHomeView,
+    goHome,
   } = useStore();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -426,6 +429,18 @@ export default function Sidebar() {
       {/* Scrollable Notebooks Section */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="px-3 py-2">
+          <button
+            type="button"
+            onClick={goHome}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors mb-2 ${
+              isHomeView
+                ? "bg-sidebar-active text-sidebar-text"
+                : "text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover"
+            }`}
+          >
+            <Home size={16} />
+            <span>Home</span>
+          </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-muted uppercase tracking-wider"

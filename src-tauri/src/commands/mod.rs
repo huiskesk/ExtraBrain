@@ -101,6 +101,12 @@ pub fn get_notes_by_notebook(state: State<AppState>, notebook_id: String) -> Res
 }
 
 #[tauri::command]
+pub fn get_all_notes(state: State<AppState>) -> Result<Vec<Note>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_all_notes().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn update_note(
     state: State<AppState>,
     id: String,
