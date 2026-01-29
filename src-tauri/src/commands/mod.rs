@@ -11,6 +11,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::State;
+use uuid::Uuid;
 
 // Notebook commands
 
@@ -281,11 +282,12 @@ pub fn save_web_clip(
     source_url: String,
 ) -> Result<Note, String> {
     let sanitized_content = sanitize_html(&content);
+    let localized_content = download_and_localize_images(sanitized_content);
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.create_note(CreateNote {
         notebook_id,
         title,
-        content: sanitized_content,
+        content: localized_content,
         content_type: "html".to_string(),
         source_url: Some(source_url),
         rating: 0,
@@ -587,6 +589,72 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> 
         })
         .to_string();
     cleaned
+}
+
+fn download_and_localize_images(html_content: String) -> String {
+    let img_regex =
+        Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*["'](https?://[^"'>\s]+)["'][^>]*>"#)
+            .expect("regex should compile: img src");
+    let mut cache: HashMap<String, String> = HashMap::new();
+
+    img_regex
+        .replace_all(&html_content, |caps: &regex::Captures| {
+            let tag = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+            let url = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            if let Some(local_path) = cache.get(url) {
+                return tag.replace(url, local_path);
+            }
+
+            let local_path = match download_image_to_attachments(url) {
+                Some(path) => {
+                    cache.insert(url.to_string(), path.clone());
+                    path
+                }
+                None => return tag.to_string(),
+            };
+
+            tag.replace(url, &local_path)
+        })
+        .to_string()
+}
+
+fn download_image_to_attachments(url: &str) -> Option<String> {
+    let home_dir = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    let attachments_dir = PathBuf::from(home_dir).join(".extrabrain").join("attachments");
+    if std::fs::create_dir_all(&attachments_dir).is_err() {
+        return None;
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .ok()?;
+    let response = client.get(url).send().ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_lowercase())?;
+
+    let extension = match content_type.split(';').next().unwrap_or_default().trim() {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => return None,
+    };
+
+    let image_bytes = response.bytes().ok()?;
+    let filename = format!("{}.{}", Uuid::new_v4(), extension);
+    let file_path = attachments_dir.join(filename);
+    std::fs::write(&file_path, &image_bytes).ok()?;
+    Some(file_path.to_string_lossy().to_string())
 }
 
 fn to_asset_src(path: &str) -> String {
