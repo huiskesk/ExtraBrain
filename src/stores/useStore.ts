@@ -50,6 +50,7 @@ interface Store {
   updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   selectNote: (id: string | null) => void;
+  openNoteFromHome: (noteId: string, notebookId: string) => Promise<void>;
   moveNoteToNotebook: (noteId: string, notebookId: string) => Promise<void>;
 
   // Event handler for notes created via Chrome extension
@@ -256,6 +257,21 @@ export const useStore = create<Store>((set, get) => ({
 
   selectNote: (id: string | null) => {
     set({ selectedNoteId: id, isHomeView: false });
+  },
+
+  openNoteFromHome: async (noteId: string, notebookId: string) => {
+    set({
+      selectedNotebookId: notebookId,
+      selectedNoteId: null,
+      isSearching: false,
+      searchQuery: "",
+      isHomeView: false,
+    });
+    await get().loadNotes(notebookId);
+    const noteExists = get().notes.some((note) => note.id === noteId);
+    if (noteExists) {
+      set({ selectedNoteId: noteId });
+    }
   },
 
   moveNoteToNotebook: async (noteId: string, notebookId: string) => {
