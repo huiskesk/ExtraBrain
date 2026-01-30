@@ -19,7 +19,7 @@ const getPreviewText = (note: Note): string => {
 };
 
 export default function Home() {
-  const { allNotes, loadAllNotes, selectNote } = useStore();
+  const { allNotes, loadAllNotes, openNoteFromHome } = useStore();
 
   useEffect(() => {
     loadAllNotes();
@@ -70,7 +70,7 @@ export default function Home() {
                 <button
                   key={note.id}
                   type="button"
-                  onClick={() => selectNote(note.id)}
+                  onClick={() => openNoteFromHome(note.id, note.notebook_id)}
                   className="group text-left"
                 >
                   <div className="text-sm font-semibold text-gray-700 mb-2 truncate">
@@ -116,7 +116,7 @@ export default function Home() {
                   <button
                     key={note.id}
                     type="button"
-                    onClick={() => selectNote(note.id)}
+                    onClick={() => openNoteFromHome(note.id, note.notebook_id)}
                     className="w-full flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-left transition hover:border-brand-200 hover:bg-brand-50/40"
                   >
                     <div className="min-w-0">
