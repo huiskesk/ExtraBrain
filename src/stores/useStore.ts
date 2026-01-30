@@ -170,6 +170,10 @@ export const useStore = create<Store>((set, get) => ({
       set({ isLoading: true });
       const notes = await invoke<Note[]>("get_notes_by_notebook", { notebookId });
       set({ notes, isLoading: false });
+      const { isSearching, searchQuery, selectedNoteId } = get();
+      if (!isSearching && !searchQuery && !selectedNoteId) {
+        set({ selectedNoteId: notes[0]?.id ?? null });
+      }
     } catch (error) {
       console.error("Failed to load notes:", error);
       set({ isLoading: false });
