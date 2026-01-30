@@ -7,7 +7,15 @@ import SearchBar from "./components/SearchBar";
 import Home from "./components/Home";
 
 function App() {
-  const { loadNotebooks, setupEventListeners, selectedNoteId, isHomeView } = useStore();
+  const {
+    loadNotebooks,
+    setupEventListeners,
+    selectedNoteId,
+    isHomeView,
+    notebooks,
+    selectedNotebookId,
+  } = useStore();
+  const selectedNotebook = notebooks.find((notebook) => notebook.id === selectedNotebookId);
 
   useEffect(() => {
     // Load notebooks on startup
@@ -58,6 +66,11 @@ function App() {
       <div className="w-80 h-screen flex flex-col bg-white border-r border-gray-200 flex-shrink-0">
         {/* Sticky search header */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-white">
+          <div className="px-4 pt-6 pb-2">
+            <h1 className="text-2xl font-semibold text-gray-800 truncate">
+              {selectedNotebook?.name ?? "Notes"}
+            </h1>
+          </div>
           <SearchBar />
         </div>
         {/* Scrollable note list */}
