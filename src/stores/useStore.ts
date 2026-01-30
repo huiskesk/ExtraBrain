@@ -158,7 +158,13 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   selectNotebook: (id: string | null) => {
-    set({ selectedNotebookId: id, selectedNoteId: null, isSearching: false, searchQuery: "" });
+    set({
+      selectedNotebookId: id,
+      selectedNoteId: null,
+      isSearching: false,
+      searchQuery: "",
+      isHomeView: id ? false : get().isHomeView,
+    });
     if (id) {
       get().loadNotes(id);
     }
