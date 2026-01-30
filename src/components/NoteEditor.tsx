@@ -10,7 +10,7 @@ import {
   ImageIcon,
   Star,
 } from "lucide-react";
-import { sanitizeHtml } from "../utils/sanitizeHtml";
+import DOMPurify from "dompurify";
 import { listen } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { homeDir } from "@tauri-apps/api/path";
@@ -195,9 +195,17 @@ export default function NoteEditor() {
     () => processContentImages(content, extrabrainRoot),
     [content, extrabrainRoot]
   );
+  const domPurifyConfig = useMemo(
+    () => ({
+      ADD_TAGS: ["embed"],
+      ALLOWED_URI_REGEXP:
+        /^(?:(?:https?|mailto|tel|asset|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    }),
+    []
+  );
   const sanitizedContent = useMemo(
-    () => sanitizeHtml(processedContent),
-    [processedContent]
+    () => DOMPurify.sanitize(processedContent, domPurifyConfig),
+    [domPurifyConfig, processedContent]
   );
 
   // Function to insert image into content
