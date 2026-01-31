@@ -65,8 +65,6 @@ export default function Sidebar() {
   const [colorMenuOpenId, setColorMenuOpenId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [extensionToken, setExtensionToken] = useState<string | null>(null);
-  const [tokenCopied, setTokenCopied] = useState(false);
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
   const [isImportingEnex, setIsImportingEnex] = useState(false);
 
@@ -134,26 +132,6 @@ export default function Sidebar() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [mainMenuOpen]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    invoke<string>("get_extension_token")
-      .then((token) => {
-        if (isMounted) {
-          setExtensionToken(token);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setExtensionToken(null);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const handleCreateNotebook = async () => {
     if (newNotebookName.trim()) {
@@ -310,17 +288,6 @@ export default function Sidebar() {
       }
     };
   }, [handleExportNotes]);
-
-  const handleCopyToken = async () => {
-    if (!extensionToken) return;
-    try {
-      await navigator.clipboard.writeText(extensionToken);
-      setTokenCopied(true);
-      setTimeout(() => setTokenCopied(false), 1500);
-    } catch (error) {
-      console.error("Failed to copy token:", error);
-    }
-  };
 
   // Drag and drop handlers for notebooks
   // Uses store-based drag state instead of HTML5 dataTransfer (more reliable with Tauri)
@@ -635,25 +602,6 @@ export default function Sidebar() {
         <div className="text-xs text-sidebar-muted">
           {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
         </div>
-        {extensionToken && (
-          <div className="mt-3 text-xs text-sidebar-muted">
-            <div className="flex items-center justify-between gap-2">
-              <span className="uppercase tracking-wider text-[10px]">
-                Extension Token
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyToken}
-                className="text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
-              >
-                {tokenCopied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <div className="mt-1 rounded bg-gray-900/60 px-2 py-1 font-mono text-[10px] text-gray-200 break-all">
-              {extensionToken}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
