@@ -8,12 +8,18 @@ import { getNoteCoverImage } from "../utils/notePreview";
 const RECENT_LIMIT = 6;
 const TOP_RATED_LIMIT = 30;
 
+const PREVIEW_CHARACTER_LIMIT = 140;
+
 const getPreviewText = (note: Note): string => {
   return note.content
-    .replace(/<[^>]*>/g, "")
-    .replace(/[#*`_~\[\]()!>]/g, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/!\[[^\]]*]\(([^)]+)\)/g, " ")
+    .replace(/\[([^\]]+)]\(([^)]+)\)/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, " ")
+    .replace(/[`*_>#~!]/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 150);
+    .slice(0, PREVIEW_CHARACTER_LIMIT);
 };
 
 export default function Home() {
@@ -97,29 +103,27 @@ export default function Home() {
                   </div>
                   {(() => {
                     const coverImage = getNoteCoverImage(note);
-                    if (coverImage) {
-                      return (
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40 overflow-hidden">
-                          <img
-                            src={coverImage}
-                            alt={note.title}
-                            className="w-full h-32 object-cover"
-                          />
-                        </div>
-                      );
-                    }
-                    if (note.content_type === "pdf") {
-                      return (
-                        <div className="rounded-xl border border-gray-200 bg-red-50 shadow-sm transition group-hover:border-red-200 group-hover:bg-red-100/70 h-32 flex items-center justify-center text-red-500">
-                          <FileText size={36} />
-                        </div>
-                      );
-                    }
+                    const previewText = getPreviewText(note);
                     return (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40 h-32">
-                        <div className="text-xs text-gray-600 leading-relaxed h-full overflow-hidden whitespace-pre-line">
-                          {getPreviewText(note)}
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40 h-64 flex flex-col">
+                        <div className="text-xs text-gray-600 leading-relaxed flex-1 overflow-hidden">
+                          {previewText}
                         </div>
+                        {coverImage ? (
+                          <div className="mt-4 h-32 w-full flex items-center justify-center">
+                            <img
+                              src={coverImage}
+                              alt={note.title}
+                              className="h-32 w-full object-contain"
+                            />
+                          </div>
+                        ) : note.content_type === "pdf" ? (
+                          <div className="mt-4 h-32 w-full flex items-center justify-center rounded-lg bg-red-50 text-red-500">
+                            <FileText size={36} />
+                          </div>
+                        ) : (
+                          <div className="mt-4 h-32 w-full" />
+                        )}
                       </div>
                     );
                   })()}
