@@ -44,6 +44,7 @@ export default function Sidebar() {
     selectedNotebookId,
     selectNotebook,
     createNotebook,
+    createNote,
     updateNotebook,
     deleteNotebook,
     importPdf,
@@ -175,6 +176,15 @@ export default function Sidebar() {
       setNewNotebookName("");
       setIsCreating(false);
     }
+  };
+
+  const handleCreateMainNote = async () => {
+    const mainNotebook =
+      notebooks.find((notebook) => notebook.name.trim().toLowerCase() === "main notebook") ??
+      notebooks[0];
+    if (!mainNotebook) return;
+    selectNotebook(mainNotebook.id);
+    await createNote(mainNotebook.id);
   };
 
   const handleUpdateNotebook = async (id: string) => {
@@ -608,6 +618,13 @@ export default function Sidebar() {
                   <span>New Notebook</span>
                 </button>
               )}
+              <button
+                onClick={handleCreateMainNote}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+              >
+                <Plus size={16} />
+                <span>New Note</span>
+              </button>
             </div>
           )}
         </div>
