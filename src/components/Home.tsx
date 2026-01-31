@@ -104,6 +104,7 @@ export default function Home() {
                   {(() => {
                     const coverImage = getNoteCoverImage(note);
                     const previewText = getPreviewText(note);
+                    const hasPreviewText = previewText.length > 0;
                     return (
                       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40 h-64 flex flex-col">
                         <div className="text-xs text-gray-600 leading-relaxed flex-1 overflow-hidden">
@@ -121,9 +122,9 @@ export default function Home() {
                           <div className="mt-4 h-32 w-full flex items-center justify-center rounded-lg bg-red-50 text-red-500">
                             <FileText size={36} />
                           </div>
-                        ) : (
+                        ) : !hasPreviewText ? (
                           <div className="mt-4 h-32 w-full" />
-                        )}
+                        ) : null}
                       </div>
                     );
                   })()}

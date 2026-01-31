@@ -164,10 +164,11 @@ export default function NoteList() {
         {selectedNotebookId && !isSearching && (
           <button
             onClick={handleCreateNote}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
             title="New Note"
           >
-            <Plus size={18} className="text-gray-600" />
+            <Plus size={16} className="text-gray-600" />
+            <span>New Note</span>
           </button>
         )}
       </div>
