@@ -187,7 +187,10 @@ export default function Sidebar() {
   };
 
   const handleImportPdf = async () => {
-    if (!selectedNotebookId) return;
+    const mainNotebook =
+      notebooks.find((notebook) => notebook.name.trim().toLowerCase() === "main notebook") ??
+      notebooks[0];
+    if (!mainNotebook) return;
 
     const selected = await open({
       multiple: false,
@@ -197,7 +200,7 @@ export default function Sidebar() {
     if (selected && typeof selected === "string") {
       const fileData = await readBinaryFile(selected);
       const fileName = selected.split("/").pop() || "document.pdf";
-      await importPdf(selectedNotebookId, fileName, Array.from(fileData));
+      await importPdf(mainNotebook.id, fileName, Array.from(fileData));
     }
   };
 
