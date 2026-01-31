@@ -33,7 +33,7 @@ interface Store {
   createNotebook: (name: string, color?: string) => Promise<Notebook>;
   updateNotebook: (id: string, updates: Partial<Notebook>) => Promise<void>;
   deleteNotebook: (id: string) => Promise<void>;
-  selectNotebook: (id: string | null) => void;
+  selectNotebook: (id: string | null, options?: { preserveHomeView?: boolean }) => void;
 
   // Note actions
   loadNotes: (notebookId: string) => Promise<void>;
@@ -101,7 +101,7 @@ export const useStore = create<Store>((set, get) => ({
 
       // Auto-select first notebook if none selected
       if (!get().selectedNotebookId && sortedNotebooks.length > 0) {
-        get().selectNotebook(sortedNotebooks[0].id);
+        get().selectNotebook(sortedNotebooks[0].id, { preserveHomeView: true });
       }
     } catch (error) {
       console.error("Failed to load notebooks:", error);
@@ -157,13 +157,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  selectNotebook: (id: string | null) => {
+  selectNotebook: (id: string | null, options = {}) => {
+    const { preserveHomeView = false } = options;
     set({
       selectedNotebookId: id,
       selectedNoteId: null,
       isSearching: false,
       searchQuery: "",
-      isHomeView: id ? false : get().isHomeView,
+      isHomeView: id ? (preserveHomeView ? get().isHomeView : false) : get().isHomeView,
     });
     if (id) {
       get().loadNotes(id);

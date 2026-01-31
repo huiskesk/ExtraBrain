@@ -62,27 +62,33 @@ function App() {
       {/* Sidebar - Notebooks - Fixed width, full height, independent scroll */}
       <Sidebar />
 
-      {/* Note List - Fixed width, full height, independent scroll */}
-      <div className="w-80 h-screen flex flex-col bg-white border-r border-gray-200 flex-shrink-0">
-        {/* Sticky search header */}
-        <div className="flex-shrink-0 sticky top-0 z-10 bg-white">
-          <div className="px-4 pt-6 pb-2">
-            <h1 className="text-2xl font-semibold text-gray-800 truncate">
-              {selectedNotebook?.name ?? "Notes"}
-            </h1>
+      {isHomeView ? (
+        <Home />
+      ) : (
+        <>
+          {/* Note List - Fixed width, full height, independent scroll */}
+          <div className="w-80 h-screen flex flex-col bg-white border-r border-gray-200 flex-shrink-0">
+            {/* Sticky search header */}
+            <div className="flex-shrink-0 sticky top-0 z-10 bg-white">
+              <div className="px-4 pt-6 pb-2">
+                <h1 className="text-2xl font-semibold text-gray-800 truncate">
+                  {selectedNotebook?.name ?? "Notes"}
+                </h1>
+              </div>
+              <SearchBar />
+            </div>
+            {/* Scrollable note list */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <NoteList />
+            </div>
           </div>
-          <SearchBar />
-        </div>
-        {/* Scrollable note list */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <NoteList />
-        </div>
-      </div>
 
-      {/* Note Editor - Flexible width, full height, independent scroll */}
-      <div className="flex-1 h-screen flex flex-col min-w-0 overflow-hidden">
-        {isHomeView ? <Home /> : selectedNoteId ? <NoteEditor /> : <EmptyState />}
-      </div>
+          {/* Note Editor - Flexible width, full height, independent scroll */}
+          <div className="flex-1 h-screen flex flex-col min-w-0 overflow-hidden">
+            {selectedNoteId ? <NoteEditor /> : <EmptyState />}
+          </div>
+        </>
+      )}
     </div>
   );
 }
