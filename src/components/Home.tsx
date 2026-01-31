@@ -3,6 +3,7 @@ import { useStore } from "../stores/useStore";
 import { Star } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Note } from "../types";
+import SearchBar from "./SearchBar";
 
 const RECENT_LIMIT = 6;
 const TOP_RATED_LIMIT = 8;
@@ -45,12 +46,17 @@ export default function Home() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50">
-      <div className="p-8 space-y-8">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold text-gray-800">Home</h1>
-          <p className="text-sm text-gray-500">
-            Pick up where you left off with your most recent captures and highest-rated notes.
-          </p>
+      <div className="flex min-h-full flex-col gap-8 p-8">
+        <header className="space-y-3">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-gray-800">Home</h1>
+            <p className="text-sm text-gray-500">
+              Pick up where you left off with your most recent captures and highest-rated notes.
+            </p>
+          </div>
+          <div className="max-w-md">
+            <SearchBar />
+          </div>
         </header>
 
         <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -65,13 +71,13 @@ export default function Home() {
               No recent notes yet. Capture a new idea to see it here.
             </div>
           ) : (
-            <div className="grid gap-4 px-6 pb-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex gap-4 px-6 pb-6 overflow-x-auto">
               {recentNotes.map((note) => (
                 <button
                   key={note.id}
                   type="button"
                   onClick={() => openNoteFromHome(note.id, note.notebook_id)}
-                  className="group text-left"
+                  className="group text-left flex-shrink-0 w-52"
                 >
                   <div className="text-sm font-semibold text-gray-700 mb-2 truncate">
                     {note.title}
@@ -96,7 +102,7 @@ export default function Home() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <section className="flex-1 rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="flex items-center justify-between px-6 pt-6 pb-3">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">Highest ranked</h2>
