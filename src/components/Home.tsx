@@ -1,21 +1,19 @@
 import { useEffect, useMemo } from "react";
 import { useStore } from "../stores/useStore";
-import { Star } from "lucide-react";
+import { FileText, Star } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Note } from "../types";
+import { getNoteCoverImage } from "../utils/notePreview";
 
 const RECENT_LIMIT = 6;
 const TOP_RATED_LIMIT = 30;
 
 const getPreviewText = (note: Note): string => {
-  if (note.content_type === "pdf") {
-    return "PDF Document";
-  }
   return note.content
     .replace(/<[^>]*>/g, "")
-    .replace(/[#*`_~\[\]]/g, "")
+    .replace(/[#*`_~\[\]()!>]/g, "")
     .trim()
-    .slice(0, 220);
+    .slice(0, 150);
 };
 
 export default function Home() {
@@ -97,11 +95,34 @@ export default function Home() {
                   <div className="text-sm font-semibold text-gray-700 mb-2 truncate">
                     {note.title}
                   </div>
-                  <div className="aspect-square rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40">
-                    <div className="text-xs text-gray-600 leading-relaxed h-full overflow-hidden whitespace-pre-line">
-                      {getPreviewText(note)}
-                    </div>
-                  </div>
+                  {(() => {
+                    const coverImage = getNoteCoverImage(note);
+                    if (coverImage) {
+                      return (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40 overflow-hidden">
+                          <img
+                            src={coverImage}
+                            alt={note.title}
+                            className="w-full h-32 object-cover"
+                          />
+                        </div>
+                      );
+                    }
+                    if (note.content_type === "pdf") {
+                      return (
+                        <div className="rounded-xl border border-gray-200 bg-red-50 shadow-sm transition group-hover:border-red-200 group-hover:bg-red-100/70 h-32 flex items-center justify-center text-red-500">
+                          <FileText size={36} />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm transition group-hover:border-brand-200 group-hover:bg-brand-50/40 h-32">
+                        <div className="text-xs text-gray-600 leading-relaxed h-full overflow-hidden whitespace-pre-line">
+                          {getPreviewText(note)}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
                     <span>{format(parseISO(note.created_at), "MMM d, yyyy")}</span>
                     {note.rating > 0 && (
