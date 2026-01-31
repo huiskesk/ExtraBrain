@@ -3,7 +3,6 @@ import { useStore } from "../stores/useStore";
 import { Star } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Note } from "../types";
-import SearchBar from "./SearchBar";
 
 const RECENT_LIMIT = 6;
 const TOP_RATED_LIMIT = 8;
@@ -53,9 +52,6 @@ export default function Home() {
             <p className="text-sm text-gray-500">
               Pick up where you left off with your most recent captures and highest-rated notes.
             </p>
-          </div>
-          <div className="max-w-md">
-            <SearchBar />
           </div>
         </header>
 

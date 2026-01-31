@@ -13,6 +13,7 @@ import {
   FolderDown,
   Home,
 } from "lucide-react";
+import SearchBar from "./SearchBar";
 import { open, message } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
 import { readBinaryFile } from "@tauri-apps/api/fs";
@@ -407,22 +408,25 @@ export default function Sidebar() {
         </div>
 
         {/* Actions */}
-        <div className="p-3 space-y-1 border-b border-gray-700/50">
-          <button
-            onClick={handleImportPdf}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
-          >
-            <Upload size={16} />
-            <span>Import PDF</span>
-          </button>
-          <button
-            onClick={handleImportEnex}
-            disabled={isImportingEnex}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Upload size={16} />
-            <span>{isImportingEnex ? "Importing..." : "Import Evernote (.enex)"}</span>
-          </button>
+        <div className="border-b border-gray-700/50">
+          <SearchBar />
+          <div className="p-3 pt-2 space-y-1">
+            <button
+              onClick={handleImportPdf}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+            >
+              <Upload size={16} />
+              <span>Import PDF</span>
+            </button>
+            <button
+              onClick={handleImportEnex}
+              disabled={isImportingEnex}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <Upload size={16} />
+              <span>{isImportingEnex ? "Importing..." : "Import Evernote (.enex)"}</span>
+            </button>
+          </div>
         </div>
       </div>
 

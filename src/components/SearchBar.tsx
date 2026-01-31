@@ -6,6 +6,10 @@ export default function SearchBar() {
   const { searchQuery, isSearching, searchNotes, clearSearch } = useStore();
   const [localQuery, setLocalQuery] = useState(searchQuery);
 
+  useEffect(() => {
+    setLocalQuery(searchQuery);
+  }, [searchQuery]);
+
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -25,7 +29,7 @@ export default function SearchBar() {
   }, [clearSearch]);
 
   return (
-    <div className="p-3 border-b border-gray-200">
+    <div className="p-3 border-b border-gray-700/50">
       <div className="relative">
         <Search
           size={16}
@@ -36,12 +40,12 @@ export default function SearchBar() {
           value={localQuery}
           onChange={(e) => setLocalQuery(e.target.value)}
           placeholder="Search notes..."
-          className="w-full pl-9 pr-8 py-2 text-sm bg-gray-100 border border-transparent rounded-lg focus:bg-white focus:border-gray-300 focus:outline-none transition-colors"
+          className="w-full pl-9 pr-8 py-2 text-sm bg-gray-800 text-sidebar-text placeholder:text-gray-400 border border-gray-700 rounded-lg focus:bg-gray-900 focus:border-brand-400 focus:outline-none transition-colors"
         />
         {localQuery && (
           <button
             onClick={handleClear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-200 rounded"
           >
             <X size={14} />
           </button>
