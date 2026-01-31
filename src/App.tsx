@@ -3,8 +3,8 @@ import { useStore } from "./stores/useStore";
 import Sidebar from "./components/Sidebar";
 import NoteList from "./components/NoteList";
 import NoteEditor from "./components/NoteEditor";
-import SearchBar from "./components/SearchBar";
 import Home from "./components/Home";
+import SearchResults from "./components/SearchResults";
 
 function App() {
   const {
@@ -14,6 +14,7 @@ function App() {
     isHomeView,
     notebooks,
     selectedNotebookId,
+    isSearching,
   } = useStore();
   const selectedNotebook = notebooks.find((notebook) => notebook.id === selectedNotebookId);
 
@@ -64,18 +65,19 @@ function App() {
 
       {isHomeView ? (
         <Home />
+      ) : isSearching ? (
+        <SearchResults />
       ) : (
         <>
           {/* Note List - Fixed width, full height, independent scroll */}
           <div className="w-80 h-screen flex flex-col bg-white border-r border-gray-200 flex-shrink-0">
-            {/* Sticky search header */}
+            {/* Sticky notebook header */}
             <div className="flex-shrink-0 sticky top-0 z-10 bg-white">
               <div className="px-4 pt-6 pb-2">
                 <h1 className="text-2xl font-semibold text-gray-800 truncate">
                   {selectedNotebook?.name ?? "Notes"}
                 </h1>
               </div>
-              <SearchBar />
             </div>
             {/* Scrollable note list */}
             <div className="flex-1 min-h-0 overflow-y-auto">

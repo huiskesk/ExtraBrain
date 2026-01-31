@@ -338,7 +338,7 @@ export const useStore = create<Store>((set, get) => ({
     }
 
     try {
-      set({ searchQuery: query, isSearching: true, isLoading: true });
+      set({ searchQuery: query, isSearching: true, isLoading: true, isHomeView: false });
       const notes = await invoke<Note[]>("search_notes", { query });
       set({ notes, isLoading: false });
     } catch (error) {
@@ -361,7 +361,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   goHome: () => {
-    set({ isHomeView: true, selectedNoteId: null });
+    set({ isHomeView: true, selectedNoteId: null, searchQuery: "", isSearching: false });
   },
 
   // PDF
