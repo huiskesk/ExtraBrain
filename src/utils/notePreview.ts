@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import type { Note } from "../types";
 
-const IMAGE_TAG_REGEX = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/i;
+const IMAGE_TAG_REGEX = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i;
 const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*]\((\S+?)(?:\s+["'][^"']*["'])?\)/i;
 
 export const getNoteCoverImage = (note: Note): string | null => {
@@ -17,6 +17,18 @@ export const getNoteCoverImage = (note: Note): string | null => {
   const src = match[1]?.trim();
   if (!src) {
     return null;
+  }
+
+  if (src.startsWith("data:")) {
+    return src;
+  }
+
+  if (src.startsWith("http")) {
+    return src;
+  }
+
+  if (src.startsWith("asset://")) {
+    return src;
   }
 
   if (src.startsWith("/")) {
