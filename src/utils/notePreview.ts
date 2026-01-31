@@ -3,6 +3,22 @@ import type { Note } from "../types";
 
 const IMAGE_TAG_REGEX = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i;
 const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*]\((\S+?)(?:\s+["'][^"']*["'])?\)/i;
+const LOCAL_ASSET_PREFIX = "asset://localhost/";
+
+const normalizeAssetPath = (assetPath: string): string => {
+  let normalized = assetPath;
+  try {
+    normalized = decodeURIComponent(assetPath);
+  } catch {
+    normalized = assetPath;
+  }
+
+  if (!normalized.startsWith("/") && !/^[A-Za-z]:/.test(normalized)) {
+    normalized = `/${normalized}`;
+  }
+
+  return normalized.replace(/\\/g, "/");
+};
 
 export const getNoteCoverImage = (note: Note): string | null => {
   if (note.content_type === "pdf") {
@@ -27,8 +43,9 @@ export const getNoteCoverImage = (note: Note): string | null => {
     return src;
   }
 
-  if (src.startsWith("asset://")) {
-    return src;
+  if (src.startsWith(LOCAL_ASSET_PREFIX)) {
+    const assetPath = normalizeAssetPath(src.slice(LOCAL_ASSET_PREFIX.length));
+    return convertFileSrc(assetPath);
   }
 
   if (src.startsWith("/")) {
