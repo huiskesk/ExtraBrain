@@ -27,6 +27,8 @@ interface Store {
   isLoading: boolean;
   dragState: DragState | null;
   isHomeView: boolean;
+  isTagView: boolean;
+  activeTag: string | null;
 
   // Notebook actions
   loadNotebooks: () => Promise<void>;
@@ -65,6 +67,7 @@ interface Store {
 
   // Home
   goHome: () => void;
+  openTagView: (tag: string) => void;
 
   // PDF
   importPdf: (notebookId: string, fileName: string, data: number[]) => Promise<Note>;
@@ -89,6 +92,8 @@ export const useStore = create<Store>((set, get) => ({
   isLoading: false,
   dragState: null,
   isHomeView: true,
+  isTagView: false,
+  activeTag: null,
 
   // Notebook actions
   loadNotebooks: async () => {
@@ -164,6 +169,8 @@ export const useStore = create<Store>((set, get) => ({
       selectedNoteId: null,
       isSearching: false,
       searchQuery: "",
+      isTagView: false,
+      activeTag: null,
       isHomeView: id ? (preserveHomeView ? get().isHomeView : false) : get().isHomeView,
     });
     if (id) {
@@ -219,6 +226,8 @@ export const useStore = create<Store>((set, get) => ({
         notes: [note, ...state.notes],
         allNotes: [note, ...state.allNotes],
         isHomeView: false,
+        isTagView: false,
+        activeTag: null,
       }));
       get().selectNote(note.id);
       return note;
@@ -267,7 +276,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   selectNote: (id: string | null) => {
-    set({ selectedNoteId: id, isHomeView: false });
+    set({ selectedNoteId: id, isHomeView: false, isTagView: false, activeTag: null });
   },
 
   openNoteFromHome: async (noteId: string, notebookId: string) => {
@@ -277,6 +286,8 @@ export const useStore = create<Store>((set, get) => ({
       isSearching: false,
       searchQuery: "",
       isHomeView: false,
+      isTagView: false,
+      activeTag: null,
     });
     await get().loadNotes(notebookId);
     const noteExists = get().notes.some((note) => note.id === noteId);
@@ -338,7 +349,14 @@ export const useStore = create<Store>((set, get) => ({
     }
 
     try {
-      set({ searchQuery: query, isSearching: true, isLoading: true, isHomeView: false });
+      set({
+        searchQuery: query,
+        isSearching: true,
+        isLoading: true,
+        isHomeView: false,
+        isTagView: false,
+        activeTag: null,
+      });
       const notes = await invoke<Note[]>("search_notes", { query });
       set({ notes, isLoading: false });
     } catch (error) {
@@ -361,14 +379,39 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   goHome: () => {
-    set({ isHomeView: true, selectedNoteId: null, searchQuery: "", isSearching: false });
+    set({
+      isHomeView: true,
+      isTagView: false,
+      activeTag: null,
+      selectedNoteId: null,
+      searchQuery: "",
+      isSearching: false,
+    });
+  },
+
+  openTagView: (tag: string) => {
+    set({
+      isHomeView: false,
+      isTagView: true,
+      activeTag: tag,
+      selectedNoteId: null,
+      isSearching: false,
+      searchQuery: "",
+    });
   },
 
   // PDF
   importPdf: async (notebookId: string, fileName: string, data: number[]) => {
     try {
       const note = await invoke<Note>("import_pdf", { notebookId, fileName, data });
-      set((state) => ({ notes: [note, ...state.notes] }));
+      const { selectedNotebookId, isSearching } = get();
+      set((state) => ({
+        notes:
+          selectedNotebookId === notebookId && !isSearching
+            ? [note, ...state.notes]
+            : state.notes,
+        allNotes: [note, ...state.allNotes],
+      }));
       return note;
     } catch (error) {
       console.error("Failed to import PDF:", error);

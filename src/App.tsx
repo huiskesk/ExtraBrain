@@ -5,6 +5,7 @@ import NoteList from "./components/NoteList";
 import NoteEditor from "./components/NoteEditor";
 import Home from "./components/Home";
 import SearchResults from "./components/SearchResults";
+import TagView from "./components/TagView";
 
 function App() {
   const {
@@ -15,6 +16,7 @@ function App() {
     notebooks,
     selectedNotebookId,
     isSearching,
+    isTagView,
   } = useStore();
   const selectedNotebook = notebooks.find((notebook) => notebook.id === selectedNotebookId);
 
@@ -63,7 +65,9 @@ function App() {
       {/* Sidebar - Notebooks - Fixed width, full height, independent scroll */}
       <Sidebar />
 
-      {isHomeView ? (
+      {isTagView ? (
+        <TagView />
+      ) : isHomeView ? (
         <Home />
       ) : isSearching ? (
         <SearchResults />

@@ -23,7 +23,7 @@ const getPreviewText = (note: Note): string => {
 };
 
 export default function Home() {
-  const { allNotes, loadAllNotes, openNoteFromHome } = useStore();
+  const { allNotes, loadAllNotes, openNoteFromHome, openTagView } = useStore();
 
   useEffect(() => {
     loadAllNotes();
@@ -201,13 +201,15 @@ export default function Home() {
                 <div className="px-6 pb-6 overflow-y-auto min-h-0">
                   <div className="flex flex-wrap gap-2">
                     {topTags.map(([tag, count]) => (
-                      <span
+                      <button
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                        type="button"
+                        onClick={() => openTagView(tag)}
+                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 transition hover:bg-brand-50 hover:text-brand-700"
                       >
                         <span>{tag}</span>
                         <span className="text-[10px] text-gray-400">({count})</span>
-                      </span>
+                      </button>
                     ))}
                   </div>
                 </div>

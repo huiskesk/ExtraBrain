@@ -70,4 +70,6 @@ export interface AppState {
   isSearching: boolean;
   viewMode: ViewMode;
   isHomeView: boolean;
+  isTagView: boolean;
+  activeTag: string | null;
 }
