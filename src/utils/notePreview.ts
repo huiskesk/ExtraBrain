@@ -4,6 +4,9 @@ import type { Note } from "../types";
 const IMAGE_TAG_REGEX = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i;
 const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*]\((\S+?)(?:\s+["'][^"']*["'])?\)/i;
 const LOCAL_ASSET_PREFIX = "asset://localhost/";
+const PDF_EMBED_REGEX = /<embed\b[^>]*\btype=["']application\/pdf["'][^>]*>/i;
+const PDF_EMBED_SRC_REGEX = /<embed\b[^>]*\bsrc=["']([^"']+\.pdf(?:\?[^"']*)?)["'][^>]*>/i;
+const PDF_LINK_REGEX = /\[[^\]]+]\(([^)]+\.pdf)(?:\s+["'][^"']*["'])?\)/i;
 
 const normalizeAssetPath = (assetPath: string): string => {
   let normalized = assetPath;
@@ -53,4 +56,15 @@ export const getNoteCoverImage = (note: Note): string | null => {
   }
 
   return src;
+};
+
+export const noteHasPdfAttachment = (note: Note): boolean => {
+  if (note.content_type === "pdf") {
+    return true;
+  }
+  return (
+    PDF_EMBED_REGEX.test(note.content) ||
+    PDF_EMBED_SRC_REGEX.test(note.content) ||
+    PDF_LINK_REGEX.test(note.content)
+  );
 };

@@ -3,7 +3,8 @@ import { useStore } from "../stores/useStore";
 import { FileText, Star } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Note } from "../types";
-import { getNoteCoverImage } from "../utils/notePreview";
+import { getNoteCoverImage, noteHasPdfAttachment } from "../utils/notePreview";
+import { normalizeTag } from "../utils/tags";
 
 const RECENT_LIMIT = 6;
 const TOP_RATED_LIMIT = 30;
@@ -51,7 +52,7 @@ export default function Home() {
     const counts = new Map<string, number>();
     allNotes.forEach((note) => {
       (note.tags ?? []).forEach((tag) => {
-        const normalized = tag.trim();
+        const normalized = normalizeTag(tag);
         if (!normalized) {
           return;
         }
@@ -118,7 +119,7 @@ export default function Home() {
                               className="h-32 w-full object-contain"
                             />
                           </div>
-                        ) : note.content_type === "pdf" ? (
+                        ) : noteHasPdfAttachment(note) ? (
                           <div className="mt-4 h-32 w-full flex items-center justify-center rounded-lg bg-red-50 text-red-500">
                             <FileText size={36} />
                           </div>

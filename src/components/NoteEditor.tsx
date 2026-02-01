@@ -15,6 +15,7 @@ import { listen } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { homeDir } from "@tauri-apps/api/path";
 import PdfViewer from "./PdfViewer";
+import { normalizeTag, normalizeTags } from "../utils/tags";
 
 // Milkdown imports
 import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
@@ -360,8 +361,18 @@ export default function NoteEditor() {
       setContent(note.content);
       setHasChanges(false);
       setRating(note.rating ?? 0);
-      setTags(note.tags ?? []);
+      const normalizedTags = normalizeTags(note.tags ?? []);
+      setTags(normalizedTags);
       setTagInput("");
+      if (
+        note.tags &&
+        (note.tags.length !== normalizedTags.length ||
+          note.tags.some((tag) => normalizeTag(tag) !== tag))
+      ) {
+        updateNote(note.id, { tags: normalizedTags }).catch((error) => {
+          console.error("Failed to normalize tags:", error);
+        });
+      }
       // Web clips and HTML content default to view mode, regular notes to edit mode
       setIsEditing(!(note.source_url || note.content_type === "html"));
       // Reset drag state when switching notes
@@ -418,8 +429,9 @@ export default function NoteEditor() {
       if (!note) {
         return;
       }
-      setTags(nextTags);
-      updateNote(note.id, { tags: nextTags }).catch((error) => {
+      const normalizedTags = normalizeTags(nextTags);
+      setTags(normalizedTags);
+      updateNote(note.id, { tags: normalizedTags }).catch((error) => {
         console.error("Failed to update tags:", error);
       });
     },
@@ -449,15 +461,16 @@ export default function NoteEditor() {
         return;
       }
 
-      const existing = new Set(tags.map((tag) => tag.toLowerCase()));
+      const existing = new Set(tags);
       const nextTags = [...tags];
 
       for (const candidate of candidates) {
-        const lowered = candidate.toLowerCase();
-        if (!existing.has(lowered)) {
-          existing.add(lowered);
-          nextTags.push(candidate);
+        const normalized = normalizeTag(candidate);
+        if (!normalized || existing.has(normalized)) {
+          continue;
         }
+        existing.add(normalized);
+        nextTags.push(normalized);
       }
 
       commitTagsUpdate(nextTags);
