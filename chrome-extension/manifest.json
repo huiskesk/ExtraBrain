@@ -5,6 +5,7 @@
   "description": "Clip web pages to ExtraBrain",
   "permissions": [
     "activeTab",
+    "alarms",
     "scripting",
     "storage"
   ],
