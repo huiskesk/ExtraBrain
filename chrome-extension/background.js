@@ -73,11 +73,16 @@ async function quickClip() {
 
 // Try to sync pending clips periodically
 chrome.alarms?.create('sync-clips', { periodInMinutes: 5 });
+syncPendingClips();
 
 chrome.alarms?.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'sync-clips') {
     await syncPendingClips();
   }
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  syncPendingClips();
 });
 
 async function syncPendingClips() {
@@ -159,6 +164,7 @@ function extractArticle() {
 
 // Context menu for right-click clipping
 chrome.runtime.onInstalled.addListener(() => {
+  syncPendingClips();
   chrome.contextMenus?.create({
     id: 'clip-selection',
     title: 'Clip selection to ExtraBrain',
