@@ -50,7 +50,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Try to load notebooks from storage or API
   await loadNotebooks();
-  chrome.runtime.sendMessage({ action: 'syncPendingClips' });
+  try {
+    await chrome.runtime.sendMessage({ action: 'syncPendingClips' });
+  } catch (error) {
+    console.debug('ExtraBrain syncPendingClips skipped:', error);
+  }
 
   // Setup clip button
   document.getElementById('clip-btn').addEventListener('click', handleClip);
