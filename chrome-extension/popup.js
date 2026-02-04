@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Try to load notebooks from storage or API
   await loadNotebooks();
+  chrome.runtime.sendMessage({ action: 'syncPendingClips' });
 
   // Setup clip button
   document.getElementById('clip-btn').addEventListener('click', handleClip);

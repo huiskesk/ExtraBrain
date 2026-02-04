@@ -85,6 +85,16 @@ chrome.runtime.onStartup.addListener(() => {
   syncPendingClips();
 });
 
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.action === 'syncPendingClips') {
+    syncPendingClips()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message }));
+    return true;
+  }
+  return false;
+});
+
 async function syncPendingClips() {
   const { pendingClips } = await chrome.storage.local.get('pendingClips');
 
