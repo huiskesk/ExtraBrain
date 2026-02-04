@@ -3,7 +3,7 @@
 
 use axum::{
     extract::State,
-    http::{header, HeaderValue, Method, Request, StatusCode},
+    http::{header, Method, Request, StatusCode},
     middleware::{self, Next},
     response::Response,
     routing::{get, post},
@@ -12,11 +12,11 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
-use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 
 use crate::db::{CreateNote, Database, Note, Notebook};
 use crate::sanitize::sanitize_html;
-use crate::server_config::{extension_token, EXTENSION_ORIGINS};
+use crate::server_config::extension_token;
 
 // Shared state type for the HTTP server
 pub type SharedDatabase = Arc<Mutex<Database>>;
@@ -75,13 +75,9 @@ pub struct NoteCreatedEvent {
 pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
     // Configure CORS to allow requests from Chrome extensions
     // Chrome extensions have origin like "chrome-extension://abcdef123456"
-    let allowed_origins = EXTENSION_ORIGINS
-        .iter()
-        .map(|origin| HeaderValue::from_str(origin).expect("Invalid CORS origin"))
-        .collect::<Vec<_>>();
     let cors = CorsLayer::new()
-        // Allow only configured extension origins
-        .allow_origin(AllowOrigin::list(allowed_origins))
+        // Allow any origin (temporary for debugging)
+        .allow_origin(Any)
         // Allow these HTTP methods
         .allow_methods(AllowMethods::list([
             Method::GET,
