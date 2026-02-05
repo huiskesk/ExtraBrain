@@ -1,4 +1,6 @@
 // ExtraBrain Web Clipper - Background Service Worker
+// EXTRA BRAIN DEBUGGER MODE
+console.log(`BACKGROUND SCRIPT LOADED: ${new Date().toISOString()}`);
 
 const API_URL = 'http://localhost:3847';
 // Note: Ensure this matches what your Rust backend expects!
@@ -80,6 +82,7 @@ async function sendClipToApp(clip) {
     });
     return response.ok;
   } catch (e) {
+    console.log(`Fetch Error: ${e.message}`);
     return false;
   }
 }
@@ -88,57 +91,80 @@ async function sendClipToApp(clip) {
 // SYNC LOGIC (The Fix)
 // ---------------------------------------------------------
 
-// Check every 2 minutes (instead of 5)
-chrome.alarms?.create('sync-clips', { periodInMinutes: 2 });
+// Check every minute while debugging offline sync behavior
+chrome.alarms?.create('sync-clips', { periodInMinutes: 1 });
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === 'sync-clips') {
+    console.log('Event: Alarm fired. Checking for sync...');
     syncPendingClips();
   }
 });
 
 // WAKE UP triggers:
 // Whenever the user switches tabs or clicks the chrome window, check for pending items.
-chrome.tabs.onActivated.addListener(triggerSyncIfNeeded);
-chrome.windows.onFocusChanged.addListener(triggerSyncIfNeeded);
+chrome.tabs.onActivated.addListener(() => {
+  console.log('Event: Tab Activated. Checking for sync...');
+  triggerSyncIfNeeded();
+});
+
+chrome.windows.onFocusChanged.addListener(() => {
+  console.log('Event: Window Focus Changed. Checking for sync...');
+  triggerSyncIfNeeded();
+});
 
 async function triggerSyncIfNeeded() {
+  console.log('Reading storage to see if clips are pending...');
   // Optimization: Read storage first. If empty, stop immediately to save CPU.
   const { pendingClips } = await chrome.storage.local.get('pendingClips');
+  console.log(`Storage check: Found ${(pendingClips || []).length} pending clips.`);
   if (pendingClips && pendingClips.length > 0) {
-    syncPendingClips();
+    await syncPendingClips();
   }
 }
 
 async function syncPendingClips() {
-  if (isSyncing) return; // Prevent overlapping runs
+  if (isSyncing) {
+    console.log('Sync already in progress. Skipping.');
+    return; // Prevent overlapping runs
+  }
+
+  console.log('Starting Sync Process...');
   isSyncing = true;
 
   try {
     const { pendingClips } = await chrome.storage.local.get('pendingClips');
     if (!pendingClips || pendingClips.length === 0) {
-      isSyncing = false;
+      console.log('No clips to sync.');
       return;
     }
+
+    console.log(`Attempting to upload ${pendingClips.length} clips to ${API_URL}...`);
 
     const newPendingList = [];
     let syncedCount = 0;
 
     // Loop through clips
     for (const clip of pendingClips) {
+      console.log(`Sending clip: "${clip.title}"...`);
       const success = await sendClipToApp(clip);
       if (success) {
+        console.log('✅ Success!');
         syncedCount++;
       } else {
+        console.log('❌ Failed to connect. Keeping in queue.');
         newPendingList.push(clip);
       }
     }
 
     // Update storage if we successfully synced anything
     if (syncedCount > 0) {
+      console.log(`Sync Batch Complete. Uploaded: ${syncedCount}. Remaining: ${newPendingList.length}`);
       await chrome.storage.local.set({ pendingClips: newPendingList });
       showNotification('Sync Complete', `Uploaded ${syncedCount} offline clips.`);
     }
+  } catch (error) {
+    console.error('CRITICAL SYNC ERROR:', error);
   } finally {
     isSyncing = false;
   }
@@ -173,11 +199,13 @@ function extractArticle() {
 
 // Context Menu Setup
 chrome.runtime.onInstalled.addListener(() => {
+  console.log('Extension Installed/Updated.');
   chrome.contextMenus?.create({ id: 'clip-selection', title: 'Clip selection', contexts: ['selection'] });
   chrome.contextMenus?.create({ id: 'clip-page', title: 'Clip page', contexts: ['page'] });
 });
 
 chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
+  console.log('Context Menu Clicked');
   // ... (Your existing context menu logic here, calling sendClipToApp or saveLocally)
   // Re-use the sendClipToApp helper to ensure consistency!
 
