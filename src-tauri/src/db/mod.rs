@@ -90,6 +90,8 @@ pub struct Database {
     data_dir: PathBuf,
 }
 
+const ICLOUD_ATTACHMENT_PATH_REWRITE_MARKER: &str = "icloud_attachment_path_rewrite_v1";
+
 impl Database {
     pub fn new() -> Result<Self> {
         let home_dir = std::env::var("HOME")
@@ -109,6 +111,7 @@ impl Database {
         let icloud_app_path = icloud_root.join("ExtraBrain");
 
         let mut data_dir = local_path.clone();
+        let mut using_icloud = false;
 
         // Check if iCloud Drive Root exists (not our folder yet)
         if icloud_root.exists() {
@@ -172,6 +175,7 @@ impl Database {
                 icloud_db_path.display()
             );
             data_dir = icloud_app_path;
+            using_icloud = true;
         } else {
             println!("💻 iCloud Root not found. Using local database.");
         }
@@ -192,6 +196,9 @@ impl Database {
         let db = Database { conn, data_dir };
         db.init_tables()?;
         db.create_default_notebook()?;
+        if using_icloud {
+            db.rewrite_local_attachment_paths_for_icloud_once(&home_path)?;
+        }
 
         Ok(db)
     }
@@ -239,6 +246,12 @@ impl Database {
                 FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS app_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id);
             CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
             CREATE INDEX IF NOT EXISTS idx_note_tags_note_id ON note_tags(note_id);
@@ -269,6 +282,72 @@ impl Database {
         )?;
         self.ensure_notes_rating_column()?;
         self.ensure_notes_deleted_at_column()?;
+        Ok(())
+    }
+
+    fn rewrite_local_attachment_paths_for_icloud_once(&self, home_path: &Path) -> Result<()> {
+        let already_rewritten: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM app_metadata WHERE key = ?1",
+                params![ICLOUD_ATTACHMENT_PATH_REWRITE_MARKER],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if already_rewritten.is_some() {
+            return Ok(());
+        }
+
+        let local_prefix = home_path.join(".extrabrain").join("attachments");
+        let icloud_prefix = home_path
+            .join("Library")
+            .join("Mobile Documents")
+            .join("com~apple~CloudDocs")
+            .join("ExtraBrain")
+            .join("attachments");
+
+        let local_prefix_str = local_prefix.to_string_lossy();
+        let icloud_prefix_str = icloud_prefix.to_string_lossy();
+
+        let local_asset_prefix = format!(
+            "asset://localhost/{}",
+            local_prefix_str.trim_start_matches('/')
+        );
+        let icloud_asset_prefix = format!(
+            "asset://localhost/{}",
+            icloud_prefix_str.trim_start_matches('/')
+        );
+
+        let tx = self.conn.unchecked_transaction()?;
+
+        tx.execute(
+            "UPDATE notes
+             SET content = REPLACE(content, ?1, ?2)
+             WHERE content LIKE '%' || ?1 || '%'",
+            params![local_asset_prefix, icloud_asset_prefix],
+        )?;
+
+        tx.execute(
+            "UPDATE notes
+             SET content = REPLACE(content, ?1, ?2)
+             WHERE content LIKE '%' || ?1 || '%'",
+            params![local_prefix_str.as_ref(), icloud_prefix_str.as_ref()],
+        )?;
+
+        tx.execute(
+            "INSERT INTO app_metadata (key, value, updated_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            params![
+                ICLOUD_ATTACHMENT_PATH_REWRITE_MARKER,
+                "done",
+                Utc::now().to_rfc3339()
+            ],
+        )?;
+
+        tx.commit()?;
+        println!("Completed one-time iCloud attachment path rewrite in notes.content");
         Ok(())
     }
 
