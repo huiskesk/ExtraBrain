@@ -39,7 +39,12 @@ pub fn sanitize_html(content: &str) -> String {
             let is_pdf = type_re
                 .captures(tag)
                 .and_then(|capture| capture.get(1))
-                .map(|value| value.as_str().trim().eq_ignore_ascii_case("application/pdf"))
+                .map(|value| {
+                    value
+                        .as_str()
+                        .trim()
+                        .eq_ignore_ascii_case("application/pdf")
+                })
                 .unwrap_or(false);
             if is_pdf {
                 tag.to_string()

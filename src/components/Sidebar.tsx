@@ -15,9 +15,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import SearchBar from "./SearchBar";
-import { open, message } from "@tauri-apps/api/dialog";
+import { open, message } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 
 const NOTEBOOK_COLORS = [
   "#22c55e", // green
