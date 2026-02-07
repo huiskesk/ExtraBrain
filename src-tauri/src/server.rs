@@ -85,7 +85,10 @@ pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
             Method::OPTIONS,
         ]))
         // Allow these headers
-        .allow_headers(AllowHeaders::list([header::AUTHORIZATION, header::CONTENT_TYPE]));
+        .allow_headers(AllowHeaders::list([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+        ]));
 
     // Create combined state with database and app handle
     let state = ServerState {
@@ -105,7 +108,10 @@ pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
         // Add shared state (database + app handle)
         .with_state(state.clone())
         // Add auth middleware
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         // Add CORS middleware
         .layer(cors);
 
@@ -117,9 +123,7 @@ pub async fn start_http_server(db: SharedDatabase, app_handle: AppHandle) {
     println!("ExtraBrain HTTP API running on http://127.0.0.1:3847");
 
     // Run the server
-    axum::serve(listener, app)
-        .await
-        .expect("HTTP server error");
+    axum::serve(listener, app).await.expect("HTTP server error");
 }
 
 // GET /health - Simple health check

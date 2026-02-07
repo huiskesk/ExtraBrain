@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/tauri";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Note } from "../types";
 
 const IMAGE_TAG_REGEX = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i;
