@@ -1,3 +1,4 @@
+use crate::storage_paths::StoragePaths;
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
@@ -93,38 +94,20 @@ pub struct Database {
 const ICLOUD_ATTACHMENT_PATH_REWRITE_MARKER: &str = "icloud_attachment_path_rewrite_v1";
 
 impl Database {
-    pub fn new() -> Result<Self> {
-        let home_dir = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_string());
+    pub fn new(paths: StoragePaths) -> Result<Self> {
+        let data_dir = paths.data_dir.clone();
+        let using_icloud = paths.icloud_app_dir.is_some();
 
-        let home_path = PathBuf::from(home_dir);
-        let local_path = home_path.join(".extrabrain");
-
-        // Define the Root of iCloud Drive (to check if enabled)
-        let icloud_root = home_path
-            .join("Library")
-            .join("Mobile Documents")
-            .join("com~apple~CloudDocs");
-
-        // Define our App folder inside iCloud
-        let icloud_app_path = icloud_root.join("ExtraBrain");
-
-        let mut data_dir = local_path.clone();
-        let mut using_icloud = false;
-
-        // Check if iCloud Drive Root exists (not our folder yet)
-        if icloud_root.exists() {
+        if let (Some(local_path), Some(icloud_app_path)) =
+            (&paths.legacy_local_data_dir, &paths.icloud_app_dir)
+        {
             let icloud_db_path = icloud_app_path.join("extrabrain.db");
 
-            // If the App Folder doesn't exist yet, or DB is missing
             if !icloud_db_path.exists() {
-                // 1. Create the App Folder in iCloud
-                if let Err(e) = std::fs::create_dir_all(&icloud_app_path) {
+                if let Err(e) = std::fs::create_dir_all(icloud_app_path) {
                     println!("Failed to create iCloud app folder: {}", e);
                 }
 
-                // 2. Migrate DB
                 let local_db_path = local_path.join("extrabrain.db");
                 if local_db_path.exists() {
                     println!("Migrating database to iCloud...");
@@ -138,7 +121,6 @@ impl Database {
                     }
                 }
 
-                // 3. Migrate Attachments
                 let local_attachments_path = local_path.join("attachments");
                 let icloud_attachments_path = icloud_app_path.join("attachments");
                 if local_attachments_path.exists() {
@@ -155,29 +137,60 @@ impl Database {
                     }
                 }
 
-                // 4. Backup Old Local Data
-                let backup_path = home_path.join(".extrabrain_backup");
-                if local_path.exists() {
-                    if backup_path.exists() {
-                        std::fs::remove_dir_all(&backup_path).ok();
-                    }
-                    // Using rename is fast/atomic
-                    if let Err(error) = std::fs::rename(&local_path, &backup_path) {
-                        println!("Failed to rename old local folder to backup: {}", error);
-                    } else {
-                        println!("Old local data backed up to: {}", backup_path.display());
+                if let Some(parent_dir) = local_path.parent() {
+                    let backup_path = parent_dir.join(".extrabrain_backup");
+                    if local_path.exists() {
+                        if backup_path.exists() {
+                            std::fs::remove_dir_all(&backup_path).ok();
+                        }
+                        if let Err(error) = std::fs::rename(local_path, &backup_path) {
+                            println!("Failed to rename old local folder to backup: {}", error);
+                        } else {
+                            println!("Old local data backed up to: {}", backup_path.display());
+                        }
                     }
                 }
             }
+        }
 
+        if let Some(icloud_app_path) = &paths.icloud_app_dir {
             println!(
                 "📱 iCloud Drive detected. Using database at: {}",
-                icloud_db_path.display()
+                icloud_app_path.join("extrabrain.db").display()
             );
-            data_dir = icloud_app_path;
-            using_icloud = true;
         } else {
-            println!("💻 iCloud Root not found. Using local database.");
+            println!("Using app data directory for database.");
+        }
+
+        if !using_icloud {
+            if let Some(legacy_local_path) = &paths.legacy_local_data_dir {
+                let legacy_db_path = legacy_local_path.join("extrabrain.db");
+                let new_db_path = data_dir.join("extrabrain.db");
+                if legacy_db_path.exists() && !new_db_path.exists() {
+                    if let Err(error) = std::fs::create_dir_all(&data_dir) {
+                        println!(
+                            "Failed to create app data directory for migration: {}",
+                            error
+                        );
+                    }
+                    if let Err(error) = std::fs::copy(&legacy_db_path, &new_db_path) {
+                        println!(
+                            "Failed to migrate legacy database into app data dir: {}",
+                            error
+                        );
+                    }
+                    let legacy_attachments = legacy_local_path.join("attachments");
+                    let new_attachments = data_dir.join("attachments");
+                    if legacy_attachments.exists() {
+                        if let Err(error) = copy_dir_all(&legacy_attachments, &new_attachments) {
+                            println!(
+                                "Failed to migrate legacy attachments into app data dir: {}",
+                                error
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // Create data directory if it doesn't exist (safety check)
@@ -197,7 +210,18 @@ impl Database {
         db.init_tables()?;
         db.create_default_notebook()?;
         if using_icloud {
-            db.rewrite_local_attachment_paths_for_icloud_once(&home_path)?;
+            if let (Some(local_prefix), Some(icloud_prefix)) = (
+                paths
+                    .legacy_local_data_dir
+                    .as_ref()
+                    .map(|path| path.join("attachments")),
+                paths
+                    .icloud_app_dir
+                    .as_ref()
+                    .map(|path| path.join("attachments")),
+            ) {
+                db.rewrite_local_attachment_paths_for_icloud_once(&local_prefix, &icloud_prefix)?;
+            }
         }
 
         Ok(db)
@@ -285,7 +309,11 @@ impl Database {
         Ok(())
     }
 
-    fn rewrite_local_attachment_paths_for_icloud_once(&self, home_path: &Path) -> Result<()> {
+    fn rewrite_local_attachment_paths_for_icloud_once(
+        &self,
+        local_prefix: &Path,
+        icloud_prefix: &Path,
+    ) -> Result<()> {
         let already_rewritten: Option<String> = self
             .conn
             .query_row(
@@ -298,14 +326,6 @@ impl Database {
         if already_rewritten.is_some() {
             return Ok(());
         }
-
-        let local_prefix = home_path.join(".extrabrain").join("attachments");
-        let icloud_prefix = home_path
-            .join("Library")
-            .join("Mobile Documents")
-            .join("com~apple~CloudDocs")
-            .join("ExtraBrain")
-            .join("attachments");
 
         let local_prefix_str = local_prefix.to_string_lossy();
         let icloud_prefix_str = icloud_prefix.to_string_lossy();
