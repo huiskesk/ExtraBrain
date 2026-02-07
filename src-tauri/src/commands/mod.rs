@@ -194,10 +194,19 @@ pub fn search_notes(state: State<AppState>, query: String) -> Result<Vec<Note>, 
 pub fn import_pdf(
     state: State<AppState>,
     notebook_id: String,
-    file_name: String,
-    data: Vec<u8>,
+    file_path: String,
 ) -> Result<Note, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
+
+    let data = std::fs::read(&file_path).map_err(|e| format!("Failed to read PDF: {}", e))?;
+
+    let path_obj = std::path::Path::new(&file_path);
+    let file_name = path_obj
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("document.pdf")
+        .to_string();
+
     db.import_pdf(&notebook_id, &file_name, &data)
         .map_err(|e| e.to_string())
 }

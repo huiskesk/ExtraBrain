@@ -17,7 +17,6 @@ import {
 import SearchBar from "./SearchBar";
 import { open, message } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
-import { readBinaryFile } from "@tauri-apps/api/fs";
 import { invoke } from "@tauri-apps/api/tauri";
 
 const NOTEBOOK_COLORS = [
@@ -48,7 +47,6 @@ export default function Sidebar() {
     createNote,
     updateNotebook,
     deleteNotebook,
-    importPdf,
     moveNoteToNotebook,
     loadNotes,
     loadNotebooks,
@@ -205,10 +203,7 @@ export default function Sidebar() {
   };
 
   const handleImportPdf = async () => {
-    const mainNotebook =
-      notebooks.find((notebook) => notebook.name.trim().toLowerCase() === "main notebook") ??
-      notebooks[0];
-    if (!mainNotebook) return;
+    if (!selectedNotebookId) return;
 
     const selected = await open({
       multiple: false,
@@ -216,9 +211,12 @@ export default function Sidebar() {
     });
 
     if (selected && typeof selected === "string") {
-      const fileData = await readBinaryFile(selected);
-      const fileName = selected.split("/").pop() || "document.pdf";
-      await importPdf(mainNotebook.id, fileName, Array.from(fileData));
+      await invoke("import_pdf", {
+        notebookId: selectedNotebookId,
+        filePath: selected,
+      });
+
+      loadNotes(selectedNotebookId);
     }
   };
 
