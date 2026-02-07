@@ -98,22 +98,33 @@ impl Database {
 
         let home_path = PathBuf::from(home_dir);
         let local_path = home_path.join(".extrabrain");
-        let icloud_path = home_path
+
+        // Define the Root of iCloud Drive (to check if enabled)
+        let icloud_root = home_path
             .join("Library")
             .join("Mobile Documents")
-            .join("com~apple~CloudDocs")
-            .join("ExtraBrain");
+            .join("com~apple~CloudDocs");
+
+        // Define our App folder inside iCloud
+        let icloud_app_path = icloud_root.join("ExtraBrain");
 
         let mut data_dir = local_path.clone();
 
-        if icloud_path.exists() {
-            let icloud_db_path = icloud_path.join("extrabrain.db");
+        // Check if iCloud Drive Root exists (not our folder yet)
+        if icloud_root.exists() {
+            let icloud_db_path = icloud_app_path.join("extrabrain.db");
 
+            // If the App Folder doesn't exist yet, or DB is missing
             if !icloud_db_path.exists() {
-                std::fs::create_dir_all(&icloud_path).ok();
+                // 1. Create the App Folder in iCloud
+                if let Err(e) = std::fs::create_dir_all(&icloud_app_path) {
+                    println!("Failed to create iCloud app folder: {}", e);
+                }
 
+                // 2. Migrate DB
                 let local_db_path = local_path.join("extrabrain.db");
                 if local_db_path.exists() {
+                    println!("Migrating database to iCloud...");
                     if let Err(error) = std::fs::copy(&local_db_path, &icloud_db_path) {
                         println!(
                             "Failed to migrate local database to iCloud Drive ({} -> {}): {}",
@@ -124,9 +135,11 @@ impl Database {
                     }
                 }
 
+                // 3. Migrate Attachments
                 let local_attachments_path = local_path.join("attachments");
-                let icloud_attachments_path = icloud_path.join("attachments");
+                let icloud_attachments_path = icloud_app_path.join("attachments");
                 if local_attachments_path.exists() {
+                    println!("Migrating attachments to iCloud...");
                     if let Err(error) =
                         copy_dir_all(&local_attachments_path, &icloud_attachments_path)
                     {
@@ -139,18 +152,17 @@ impl Database {
                     }
                 }
 
+                // 4. Backup Old Local Data
                 let backup_path = home_path.join(".extrabrain_backup");
                 if local_path.exists() {
                     if backup_path.exists() {
                         std::fs::remove_dir_all(&backup_path).ok();
                     }
+                    // Using rename is fast/atomic
                     if let Err(error) = std::fs::rename(&local_path, &backup_path) {
-                        println!(
-                            "Failed to backup local data directory ({} -> {}): {}",
-                            local_path.display(),
-                            backup_path.display(),
-                            error
-                        );
+                        println!("Failed to rename old local folder to backup: {}", error);
+                    } else {
+                        println!("Old local data backed up to: {}", backup_path.display());
                     }
                 }
             }
@@ -159,12 +171,12 @@ impl Database {
                 "📱 iCloud Drive detected. Using database at: {}",
                 icloud_db_path.display()
             );
-            data_dir = icloud_path;
+            data_dir = icloud_app_path;
         } else {
-            println!("💻 iCloud not found. Using local database.");
+            println!("💻 iCloud Root not found. Using local database.");
         }
 
-        // Create data directory if it doesn't exist
+        // Create data directory if it doesn't exist (safety check)
         std::fs::create_dir_all(&data_dir).ok();
         std::fs::create_dir_all(data_dir.join("pdfs")).ok();
 
