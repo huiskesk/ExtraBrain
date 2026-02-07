@@ -31,6 +31,7 @@ pub struct Note {
     pub is_archived: bool,
     pub rating: i32,
     pub tags: Vec<String>,
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -145,6 +146,7 @@ impl Database {
                 is_pinned INTEGER DEFAULT 0,
                 is_archived INTEGER DEFAULT 0,
                 rating INTEGER DEFAULT 0,
+                deleted_at TEXT,
                 FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
             );
 
@@ -190,6 +192,7 @@ impl Database {
             "
         )?;
         self.ensure_notes_rating_column()?;
+        self.ensure_notes_deleted_at_column()?;
         Ok(())
     }
 
@@ -203,6 +206,18 @@ impl Database {
                 .execute("ALTER TABLE notes ADD COLUMN rating INTEGER DEFAULT 0", [])?;
             self.conn
                 .execute("UPDATE notes SET rating = 0 WHERE rating IS NULL", [])?;
+        }
+        Ok(())
+    }
+
+    fn ensure_notes_deleted_at_column(&self) -> Result<()> {
+        let mut stmt = self.conn.prepare("PRAGMA table_info(notes)")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<String>>>()?;
+        if !columns.iter().any(|name| name == "deleted_at") {
+            self.conn
+                .execute("ALTER TABLE notes ADD COLUMN deleted_at TEXT", [])?;
         }
         Ok(())
     }
@@ -384,6 +399,7 @@ impl Database {
             is_archived: false,
             rating: input.rating,
             tags: input.tags,
+            deleted_at: None,
         })
     }
 
@@ -414,7 +430,7 @@ impl Database {
     pub fn get_note(&self, id: &str) -> Result<Note> {
         let mut note = self.conn.query_row(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
-                    created_at, updated_at, is_pinned, is_archived, rating
+                    created_at, updated_at, is_pinned, is_archived, rating, deleted_at
              FROM notes WHERE id = ?1",
             params![id],
             |row| {
@@ -432,6 +448,7 @@ impl Database {
                     is_archived: row.get(10)?,
                     rating: row.get(11)?,
                     tags: Vec::new(),
+                    deleted_at: row.get(12)?,
                 })
             },
         )?;
@@ -443,9 +460,9 @@ impl Database {
     pub fn get_notes_by_notebook(&self, notebook_id: &str) -> Result<Vec<Note>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
-                    created_at, updated_at, is_pinned, is_archived, rating
+                    created_at, updated_at, is_pinned, is_archived, rating, deleted_at
              FROM notes
-             WHERE notebook_id = ?1 AND is_archived = 0
+             WHERE notebook_id = ?1 AND is_archived = 0 AND deleted_at IS NULL
              ORDER BY is_pinned DESC, rating DESC, updated_at DESC",
         )?;
 
@@ -464,6 +481,7 @@ impl Database {
                 is_archived: row.get(10)?,
                 rating: row.get(11)?,
                 tags: Vec::new(),
+                deleted_at: row.get(12)?,
             })
         })?;
 
@@ -478,8 +496,9 @@ impl Database {
     pub fn get_all_notes(&self) -> Result<Vec<Note>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
-                    created_at, updated_at, is_pinned, is_archived, rating
+                    created_at, updated_at, is_pinned, is_archived, rating, deleted_at
              FROM notes
+             WHERE deleted_at IS NULL
              ORDER BY updated_at DESC",
         )?;
 
@@ -498,6 +517,7 @@ impl Database {
                 is_archived: row.get(10)?,
                 rating: row.get(11)?,
                 tags: Vec::new(),
+                deleted_at: row.get(12)?,
             })
         })?;
 
@@ -551,16 +571,70 @@ impl Database {
     }
 
     pub fn delete_note(&self, id: &str) -> Result<()> {
-        // Get note to check for PDF file
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE notes SET deleted_at = ?1, updated_at = ?2 WHERE id = ?3",
+            params![now, now, id],
+        )?;
+        println!("Soft deleted note: {}", id);
+        Ok(())
+    }
+
+    pub fn get_deleted_notes(&self) -> Result<Vec<Note>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
+                    created_at, updated_at, is_pinned, is_archived, rating, deleted_at
+             FROM notes
+             WHERE deleted_at IS NOT NULL
+             ORDER BY deleted_at DESC",
+        )?;
+
+        let notes = stmt.query_map([], |row| {
+            Ok(Note {
+                id: row.get(0)?,
+                notebook_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                content_type: row.get(4)?,
+                source_url: row.get(5)?,
+                pdf_path: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                is_pinned: row.get(9)?,
+                is_archived: row.get(10)?,
+                rating: row.get(11)?,
+                tags: Vec::new(),
+                deleted_at: row.get(12)?,
+            })
+        })?;
+
+        let mut notes: Vec<Note> = notes.collect::<Result<Vec<_>>>()?;
+        for note in &mut notes {
+            note.tags = self.fetch_tags_for_note(&note.id)?;
+        }
+
+        Ok(notes)
+    }
+
+    pub fn restore_note(&self, id: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE notes SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        println!("Restored note: {}", id);
+        Ok(())
+    }
+
+    pub fn permanently_delete_note(&self, id: &str) -> Result<()> {
         if let Ok(note) = self.get_note(id) {
             if let Some(pdf_path) = note.pdf_path {
-                // Delete the PDF file if it exists
                 std::fs::remove_file(pdf_path).ok();
             }
         }
         self.conn
             .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
-        println!("Deleted note: {}", id);
+        println!("Permanently deleted note: {}", id);
         Ok(())
     }
 
@@ -581,10 +655,10 @@ impl Database {
         let search_query = format!("{}*", query);
         let mut stmt = self.conn.prepare(
             "SELECT n.id, n.notebook_id, n.title, n.content, n.content_type, n.source_url,
-                    n.pdf_path, n.created_at, n.updated_at, n.is_pinned, n.is_archived, n.rating
+                    n.pdf_path, n.created_at, n.updated_at, n.is_pinned, n.is_archived, n.rating, n.deleted_at
              FROM notes n
              JOIN notes_fts fts ON n.rowid = fts.rowid
-             WHERE notes_fts MATCH ?1 AND n.is_archived = 0
+             WHERE notes_fts MATCH ?1 AND n.is_archived = 0 AND n.deleted_at IS NULL
              ORDER BY rank",
         )?;
 
@@ -603,6 +677,7 @@ impl Database {
                 is_archived: row.get(10)?,
                 rating: row.get(11)?,
                 tags: Vec::new(),
+                deleted_at: row.get(12)?,
             })
         })?;
 
@@ -657,6 +732,7 @@ impl Database {
             is_archived: false,
             rating: 0,
             tags: Vec::new(),
+            deleted_at: None,
         })
     }
 
