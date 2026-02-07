@@ -336,7 +336,8 @@ pub fn save_web_clip(
 pub fn localize_note_images(state: State<AppState>, note_id: String) -> Result<String, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let note = db.get_note(&note_id).map_err(|e| e.to_string())?;
-    let localized_content = download_and_localize_images(note.content);
+    let attachments_dir = db.data_dir().join("attachments");
+    let localized_content = download_and_localize_images(note.content, &attachments_dir);
     db.update_note(UpdateNote {
         id: note_id,
         title: None,
@@ -658,7 +659,7 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> 
     cleaned
 }
 
-fn download_and_localize_images(html_content: String) -> String {
+fn download_and_localize_images(html_content: String, attachments_dir: &Path) -> String {
     let img_regex =
         Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>"#)
             .expect("regex should compile: img src");
@@ -682,7 +683,7 @@ fn download_and_localize_images(html_content: String) -> String {
             }
 
             println!("Attempting download: {}", url);
-            let asset_path = match download_image_to_attachments(url) {
+            let asset_path = match download_image_to_attachments(url, attachments_dir) {
                 Some(path) => {
                     let asset_path = to_asset_src(&path);
                     cache.insert(url.to_string(), asset_path.clone());
@@ -696,13 +697,7 @@ fn download_and_localize_images(html_content: String) -> String {
         .to_string()
 }
 
-fn download_image_to_attachments(url: &str) -> Option<String> {
-    let home_dir = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    let attachments_dir = PathBuf::from(home_dir)
-        .join(".extrabrain")
-        .join("attachments");
+fn download_image_to_attachments(url: &str, attachments_dir: &Path) -> Option<String> {
     if std::fs::create_dir_all(&attachments_dir).is_err() {
         return None;
     }
