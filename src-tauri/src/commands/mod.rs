@@ -1,11 +1,11 @@
-use crate::AppState;
 use crate::db::{
-    CreateImportedNote, CreateNotebook, CreateNote, Note, Notebook, UpdateNote, UpdateNotebook,
+    CreateImportedNote, CreateNote, CreateNotebook, Note, Notebook, UpdateNote, UpdateNotebook,
 };
 use crate::sanitize::sanitize_html;
 use crate::server_config;
-use chrono::{DateTime, Utc};
+use crate::AppState;
 use base64::Engine;
+use chrono::{DateTime, Utc};
 use quick_xml::de::from_str;
 use regex::Regex;
 use std::collections::HashMap;
@@ -95,9 +95,13 @@ pub fn get_note(state: State<AppState>, id: String) -> Result<Note, String> {
 }
 
 #[tauri::command]
-pub fn get_notes_by_notebook(state: State<AppState>, notebook_id: String) -> Result<Vec<Note>, String> {
+pub fn get_notes_by_notebook(
+    state: State<AppState>,
+    notebook_id: String,
+) -> Result<Vec<Note>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_notes_by_notebook(&notebook_id).map_err(|e| e.to_string())
+    db.get_notes_by_notebook(&notebook_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -147,6 +151,24 @@ pub fn update_note(
 pub fn delete_note(state: State<AppState>, id: String) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.delete_note(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_deleted_notes(state: State<AppState>) -> Result<Vec<Note>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_deleted_notes().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn restore_note(state: State<AppState>, id: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.restore_note(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn permanently_delete_note(state: State<AppState>, id: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.permanently_delete_note(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -249,8 +271,8 @@ pub fn import_enex(state: State<AppState>, file_path: String) -> Result<usize, S
         let content = sanitize_html(&cleaned_content);
 
         let created_at = parse_enex_datetime(note.created.as_deref()).unwrap_or_else(current_time);
-        let updated_at = parse_enex_datetime(note.updated.as_deref())
-            .unwrap_or_else(|| created_at.clone());
+        let updated_at =
+            parse_enex_datetime(note.updated.as_deref()).unwrap_or_else(|| created_at.clone());
 
         db.create_imported_note(CreateImportedNote {
             notebook_id: notebook.id.clone(),
@@ -320,13 +342,22 @@ pub fn localize_note_images(state: State<AppState>, note_id: String) -> Result<S
 }
 
 #[tauri::command]
-pub fn add_tag(state: State<AppState>, note_id: String, tag_name: String) -> Result<Vec<String>, String> {
+pub fn add_tag(
+    state: State<AppState>,
+    note_id: String,
+    tag_name: String,
+) -> Result<Vec<String>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.add_tag_to_note(&note_id, &tag_name).map_err(|e| e.to_string())
+    db.add_tag_to_note(&note_id, &tag_name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn remove_tag(state: State<AppState>, note_id: String, tag_name: String) -> Result<Vec<String>, String> {
+pub fn remove_tag(
+    state: State<AppState>,
+    note_id: String,
+    tag_name: String,
+) -> Result<Vec<String>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.remove_tag_from_note(&note_id, &tag_name)
         .map_err(|e| e.to_string())
@@ -412,8 +443,8 @@ pub struct ImageData {
 
 #[tauri::command]
 pub fn read_image_file(path: String) -> Result<ImageData, String> {
-    use std::path::Path;
     use std::fs;
+    use std::path::Path;
 
     let file_path = Path::new(&path);
 
@@ -452,7 +483,7 @@ pub fn read_image_file(path: String) -> Result<ImageData, String> {
     }
 
     // Encode to base64
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     let base64_data = STANDARD.encode(&data);
     let base64 = format!("data:{};base64,{}", mime_type, base64_data);
 
@@ -466,7 +497,11 @@ pub fn read_image_file(path: String) -> Result<ImageData, String> {
 
 fn sanitize_filename(name: &str) -> String {
     let trimmed = name.trim();
-    let fallback = if trimmed.is_empty() { "Untitled" } else { trimmed };
+    let fallback = if trimmed.is_empty() {
+        "Untitled"
+    } else {
+        trimmed
+    };
     let sanitized: String = fallback
         .chars()
         .map(|c| match c {
@@ -572,16 +607,15 @@ fn extract_enex_resources(
 fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> String {
     let xml_decl_re =
         Regex::new(r"(?s)<\?xml.*?\?>").expect("regex should compile: xml declaration");
-    let doctype_re =
-        Regex::new(r"(?s)<!DOCTYPE.*?>").expect("regex should compile: doctype");
+    let doctype_re = Regex::new(r"(?s)<!DOCTYPE.*?>").expect("regex should compile: doctype");
     let en_note_re =
         Regex::new(r"(?is)</?en-note[^>]*>").expect("regex should compile: en-note tag");
     let hidden_div_re = Regex::new(
         r#"(?is)<div[^>]*style\s*=\s*["'][^"']*display\s*:\s*none[^"']*["'][^>]*>.*?</div>"#,
     )
     .expect("regex should compile: hidden div");
-    let en_media_re = Regex::new(r#"(?is)<en-media\b[^>]*>"#)
-        .expect("regex should compile: en-media");
+    let en_media_re =
+        Regex::new(r#"(?is)<en-media\b[^>]*>"#).expect("regex should compile: en-media");
     let hash_re = Regex::new(r#"(?is)hash\s*=\s*["']([^"']+)["']"#)
         .expect("regex should compile: en-media hash");
 
@@ -616,10 +650,9 @@ fn clean_enex_content(raw: &str, media_map: &HashMap<String, MediaResource>) -> 
 }
 
 fn download_and_localize_images(html_content: String) -> String {
-    let img_regex = Regex::new(
-        r#"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>"#,
-    )
-    .expect("regex should compile: img src");
+    let img_regex =
+        Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>"#)
+            .expect("regex should compile: img src");
     let mut cache: HashMap<String, String> = HashMap::new();
 
     img_regex
@@ -658,7 +691,9 @@ fn download_image_to_attachments(url: &str) -> Option<String> {
     let home_dir = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    let attachments_dir = PathBuf::from(home_dir).join(".extrabrain").join("attachments");
+    let attachments_dir = PathBuf::from(home_dir)
+        .join(".extrabrain")
+        .join("attachments");
     if std::fs::create_dir_all(&attachments_dir).is_err() {
         return None;
     }

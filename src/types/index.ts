@@ -22,6 +22,7 @@ export interface Note {
   is_archived: boolean;
   rating: number;
   tags: string[];
+  deleted_at: string | null;
 }
 
 export interface CreateNoteInput {
@@ -71,5 +72,6 @@ export interface AppState {
   viewMode: ViewMode;
   isHomeView: boolean;
   isTagView: boolean;
+  isTrashView: boolean;
   activeTag: string | null;
 }

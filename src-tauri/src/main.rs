@@ -67,6 +67,9 @@ fn main() {
             commands::get_all_notes,
             commands::update_note,
             commands::delete_note,
+            commands::get_deleted_notes,
+            commands::restore_note,
+            commands::permanently_delete_note,
             commands::move_note_to_notebook,
             commands::search_notes,
             commands::localize_note_images,
@@ -105,8 +108,8 @@ fn main() {
             // We start it here in setup() so we have access to AppHandle
             std::thread::spawn(move || {
                 // Create a new Tokio runtime for the HTTP server
-                let runtime = tokio::runtime::Runtime::new()
-                    .expect("Failed to create Tokio runtime");
+                let runtime =
+                    tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
                 // Run the HTTP server (blocks this thread, which is fine)
                 runtime.block_on(async {

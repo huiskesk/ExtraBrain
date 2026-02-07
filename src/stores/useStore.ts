@@ -19,6 +19,7 @@ interface Store {
   notebooks: Notebook[];
   notes: Note[];
   allNotes: Note[];
+  deletedNotes: Note[];
   selectedNotebookId: string | null;
   selectedNoteId: string | null;
   searchQuery: string;
@@ -28,6 +29,7 @@ interface Store {
   dragState: DragState | null;
   isHomeView: boolean;
   isTagView: boolean;
+  isTrashView: boolean;
   activeTag: string | null;
 
   // Notebook actions
@@ -40,6 +42,7 @@ interface Store {
   // Note actions
   loadNotes: (notebookId: string) => Promise<void>;
   loadAllNotes: () => Promise<void>;
+  loadDeletedNotes: () => Promise<void>;
   createNote: (
     notebookId: string,
     title?: string,
@@ -51,6 +54,8 @@ interface Store {
   ) => Promise<Note>;
   updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
+  restoreNote: (id: string) => Promise<void>;
+  permanentlyDeleteNote: (id: string) => Promise<void>;
   selectNote: (id: string | null) => void;
   openNoteFromHome: (noteId: string, notebookId: string) => Promise<void>;
   moveNoteToNotebook: (noteId: string, notebookId: string) => Promise<void>;
@@ -68,6 +73,7 @@ interface Store {
   // Home
   goHome: () => void;
   openTagView: (tag: string) => void;
+  openTrashView: () => void;
 
   // PDF
   importPdf: (notebookId: string, fileName: string, data: number[]) => Promise<Note>;
@@ -84,6 +90,7 @@ export const useStore = create<Store>((set, get) => ({
   notebooks: [],
   notes: [],
   allNotes: [],
+  deletedNotes: [],
   selectedNotebookId: null,
   selectedNoteId: null,
   searchQuery: "",
@@ -93,6 +100,7 @@ export const useStore = create<Store>((set, get) => ({
   dragState: null,
   isHomeView: true,
   isTagView: false,
+  isTrashView: false,
   activeTag: null,
 
   // Notebook actions
@@ -170,6 +178,7 @@ export const useStore = create<Store>((set, get) => ({
       isSearching: false,
       searchQuery: "",
       isTagView: false,
+      isTrashView: false,
       activeTag: null,
       isHomeView: id ? (preserveHomeView ? get().isHomeView : false) : get().isHomeView,
     });
@@ -203,6 +212,15 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  loadDeletedNotes: async () => {
+    try {
+      const deletedNotes = await invoke<Note[]>("get_deleted_notes");
+      set({ deletedNotes });
+    } catch (error) {
+      console.error("Failed to load deleted notes:", error);
+    }
+  },
+
   createNote: async (
     notebookId: string,
     title = "Untitled Note",
@@ -227,6 +245,7 @@ export const useStore = create<Store>((set, get) => ({
         allNotes: [note, ...state.allNotes],
         isHomeView: false,
         isTagView: false,
+        isTrashView: false,
         activeTag: null,
       }));
       get().selectNote(note.id);
@@ -260,12 +279,18 @@ export const useStore = create<Store>((set, get) => ({
       const { notes, selectedNoteId } = get();
       const newNotes = notes.filter((note) => note.id !== id);
 
-      set((state) => ({
-        notes: newNotes,
-        allNotes: state.allNotes.filter((note) => note.id !== id),
-      }));
+      set((state) => {
+        const deletedNote = state.allNotes.find((note) => note.id === id) ?? null;
+        const deletedAt = new Date().toISOString();
+        return {
+          notes: newNotes,
+          allNotes: state.allNotes.filter((note) => note.id !== id),
+          deletedNotes: deletedNote
+            ? [{ ...deletedNote, deleted_at: deletedAt }, ...state.deletedNotes]
+            : state.deletedNotes,
+        };
+      });
 
-      // If deleted note was selected, clear selection
       if (selectedNoteId === id) {
         set({ selectedNoteId: null });
       }
@@ -275,8 +300,37 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  restoreNote: async (id: string) => {
+    try {
+      await invoke("restore_note", { id });
+      set((state) => ({
+        deletedNotes: state.deletedNotes.filter((note) => note.id !== id),
+      }));
+      await get().loadAllNotes();
+      const { selectedNotebookId, isTrashView } = get();
+      if (selectedNotebookId && !isTrashView) {
+        await get().loadNotes(selectedNotebookId);
+      }
+    } catch (error) {
+      console.error("Failed to restore note:", error);
+      throw error;
+    }
+  },
+
+  permanentlyDeleteNote: async (id: string) => {
+    try {
+      await invoke("permanently_delete_note", { id });
+      set((state) => ({
+        deletedNotes: state.deletedNotes.filter((note) => note.id !== id),
+      }));
+    } catch (error) {
+      console.error("Failed to permanently delete note:", error);
+      throw error;
+    }
+  },
+
   selectNote: (id: string | null) => {
-    set({ selectedNoteId: id, isHomeView: false, isTagView: false, activeTag: null });
+    set({ selectedNoteId: id, isHomeView: false, isTagView: false, isTrashView: false, activeTag: null });
   },
 
   openNoteFromHome: async (noteId: string, notebookId: string) => {
@@ -287,6 +341,7 @@ export const useStore = create<Store>((set, get) => ({
       searchQuery: "",
       isHomeView: false,
       isTagView: false,
+      isTrashView: false,
       activeTag: null,
     });
     await get().loadNotes(notebookId);
@@ -355,6 +410,7 @@ export const useStore = create<Store>((set, get) => ({
         isLoading: true,
         isHomeView: false,
         isTagView: false,
+        isTrashView: false,
         activeTag: null,
       });
       const notes = await invoke<Note[]>("search_notes", { query });
@@ -382,6 +438,7 @@ export const useStore = create<Store>((set, get) => ({
     set({
       isHomeView: true,
       isTagView: false,
+      isTrashView: false,
       activeTag: null,
       selectedNoteId: null,
       searchQuery: "",
@@ -393,11 +450,25 @@ export const useStore = create<Store>((set, get) => ({
     set({
       isHomeView: false,
       isTagView: true,
+      isTrashView: false,
       activeTag: tag,
       selectedNoteId: null,
       isSearching: false,
       searchQuery: "",
     });
+  },
+
+  openTrashView: () => {
+    set({
+      isHomeView: false,
+      isTagView: false,
+      isTrashView: true,
+      activeTag: null,
+      selectedNoteId: null,
+      isSearching: false,
+      searchQuery: "",
+    });
+    get().loadDeletedNotes();
   },
 
   // PDF

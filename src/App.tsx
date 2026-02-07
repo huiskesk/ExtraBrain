@@ -6,6 +6,7 @@ import NoteEditor from "./components/NoteEditor";
 import Home from "./components/Home";
 import SearchResults from "./components/SearchResults";
 import TagView from "./components/TagView";
+import TrashView from "./components/TrashView";
 
 function App() {
   const {
@@ -17,6 +18,7 @@ function App() {
     selectedNotebookId,
     isSearching,
     isTagView,
+    isTrashView,
   } = useStore();
   const selectedNotebook = notebooks.find((notebook) => notebook.id === selectedNotebookId);
 
@@ -67,6 +69,8 @@ function App() {
 
       {isTagView ? (
         <TagView />
+      ) : isTrashView ? (
+        <TrashView />
       ) : isHomeView ? (
         <Home />
       ) : isSearching ? (

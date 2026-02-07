@@ -55,7 +55,9 @@ export default function Sidebar() {
     dragState,
     clearDragState,
     isHomeView,
+    isTrashView,
     goHome,
+    openTrashView,
   } = useStore();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -422,6 +424,18 @@ export default function Sidebar() {
               <Upload size={16} />
               <span>{isImportingEnex ? "Importing..." : "Import Evernote (.enex)"}</span>
             </button>
+            <button
+              type="button"
+              onClick={goHome}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+                isHomeView
+                  ? "bg-sidebar-active text-sidebar-text"
+                  : "text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover"
+              }`}
+            >
+              <Home size={16} />
+              <span>Home</span>
+            </button>
           </div>
         </div>
       </div>
@@ -429,18 +443,6 @@ export default function Sidebar() {
       {/* Scrollable Notebooks Section */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="px-3 py-2">
-          <button
-            type="button"
-            onClick={goHome}
-            className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors mb-2 ${
-              isHomeView
-                ? "bg-sidebar-active text-sidebar-text"
-                : "text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover"
-            }`}
-          >
-            <Home size={16} />
-            <span>Home</span>
-          </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-muted uppercase tracking-wider"
@@ -502,7 +504,6 @@ export default function Sidebar() {
                     <MoreHorizontal size={14} />
                   </button>
 
-                  {/* Dropdown Menu */}
                   {menuOpenId === notebook.id && (
                     <div
                       ref={menuRef}
@@ -514,7 +515,6 @@ export default function Sidebar() {
                           setEditingId(notebook.id);
                           setEditingName(notebook.name);
                           setMenuOpenId(null);
-                          setColorMenuOpenId(null);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-hover"
                       >
@@ -524,9 +524,7 @@ export default function Sidebar() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setColorMenuOpenId(
-                            colorMenuOpenId === notebook.id ? null : notebook.id
-                          );
+                          setColorMenuOpenId(colorMenuOpenId === notebook.id ? null : notebook.id);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-hover"
                       >
@@ -571,56 +569,62 @@ export default function Sidebar() {
                   )}
                 </div>
               ))}
-
-              {/* Create notebook */}
-              {isCreating ? (
-                <div className="flex items-center gap-2 px-3 py-2">
-                  <Book size={16} className="text-sidebar-muted flex-shrink-0" />
-                  <input
-                    type="text"
-                    value={newNotebookName}
-                    onChange={(e) => setNewNotebookName(e.target.value)}
-                    onBlur={() => {
-                      if (!newNotebookName.trim()) setIsCreating(false);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleCreateNotebook();
-                      if (e.key === "Escape") {
-                        setIsCreating(false);
-                        setNewNotebookName("");
-                      }
-                    }}
-                    placeholder="Notebook name"
-                    className="flex-1 bg-sidebar-hover text-sidebar-text text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-brand-500"
-                    autoFocus
-                  />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setIsCreating(true)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
-                >
-                  <Plus size={16} />
-                  <span>New Notebook</span>
-                </button>
-              )}
-              <button
-                onClick={handleCreateMainNote}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
-              >
-                <Plus size={16} />
-                <span>New Note</span>
-              </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Sticky Footer */}
-      <div className="flex-shrink-0 p-3 border-t border-gray-700 bg-sidebar-bg">
-        <div className="text-xs text-sidebar-muted">
-          {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
-        </div>
+      <div className="flex-shrink-0 border-t border-gray-700/50 bg-sidebar-bg p-3 space-y-1">
+        {isCreating ? (
+          <div className="flex items-center gap-2 px-3 py-2">
+            <Book size={16} className="text-sidebar-muted flex-shrink-0" />
+            <input
+              type="text"
+              value={newNotebookName}
+              onChange={(e) => setNewNotebookName(e.target.value)}
+              onBlur={() => {
+                if (!newNotebookName.trim()) setIsCreating(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateNotebook();
+                if (e.key === "Escape") {
+                  setIsCreating(false);
+                  setNewNotebookName("");
+                }
+              }}
+              placeholder="Notebook name"
+              className="flex-1 bg-sidebar-hover text-sidebar-text text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-brand-500"
+              autoFocus
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            <span>New Notebook</span>
+          </button>
+        )}
+        <button
+          onClick={handleCreateMainNote}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+        >
+          <Plus size={16} />
+          <span>New Note</span>
+        </button>
+        <button
+          type="button"
+          onClick={openTrashView}
+          className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+            isTrashView
+              ? "bg-sidebar-active text-sidebar-text"
+              : "text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover"
+          }`}
+        >
+          <Trash2 size={16} />
+          <span>Trash</span>
+        </button>
       </div>
 
       {pendingDeleteNotebookId && (
