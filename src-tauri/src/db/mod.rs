@@ -1,8 +1,9 @@
-use rusqlite::{Connection, Result, params, OptionalExtension};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::Utc;
+use rusqlite::{params, Connection, OptionalExtension, Result};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Notebook {
@@ -107,6 +108,9 @@ impl Database {
         println!("Database path: {:?}", db_path);
 
         let conn = Connection::open(&db_path)?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.busy_timeout(Duration::from_secs(5))?;
 
         let db = Database { conn, data_dir };
         db.init_tables()?;
@@ -195,24 +199,18 @@ impl Database {
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<Result<Vec<String>>>()?;
         if !columns.iter().any(|name| name == "rating") {
-            self.conn.execute(
-                "ALTER TABLE notes ADD COLUMN rating INTEGER DEFAULT 0",
-                [],
-            )?;
-            self.conn.execute(
-                "UPDATE notes SET rating = 0 WHERE rating IS NULL",
-                [],
-            )?;
+            self.conn
+                .execute("ALTER TABLE notes ADD COLUMN rating INTEGER DEFAULT 0", [])?;
+            self.conn
+                .execute("UPDATE notes SET rating = 0 WHERE rating IS NULL", [])?;
         }
         Ok(())
     }
 
     fn create_default_notebook(&self) -> Result<()> {
-        let count: i32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM notebooks",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i32 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM notebooks", [], |row| row.get(0))?;
 
         if count == 0 {
             let now = Utc::now().to_rfc3339();
@@ -242,14 +240,27 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
 
-        let max_order: i32 = self.conn
-            .query_row("SELECT COALESCE(MAX(sort_order), 0) FROM notebooks", [], |row| row.get(0))
+        let max_order: i32 = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_order), 0) FROM notebooks",
+                [],
+                |row| row.get(0),
+            )
             .unwrap_or(0);
 
         self.conn.execute(
             "INSERT INTO notebooks (id, name, color, icon, created_at, updated_at, sort_order)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, input.name, input.color, input.icon, now, now, max_order + 1],
+            params![
+                id,
+                input.name,
+                input.color,
+                input.icon,
+                now,
+                now,
+                max_order + 1
+            ],
         )?;
 
         println!("Created notebook: {} (id: {})", input.name, id);
@@ -268,7 +279,7 @@ impl Database {
     pub fn get_all_notebooks(&self) -> Result<Vec<Notebook>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, color, icon, created_at, updated_at, sort_order
-             FROM notebooks ORDER BY sort_order ASC"
+             FROM notebooks ORDER BY sort_order ASC",
         )?;
 
         let notebooks = stmt.query_map([], |row| {
@@ -319,10 +330,14 @@ impl Database {
     }
 
     pub fn delete_notebook(&self, id: &str) -> Result<()> {
-        // First delete all notes in the notebook
-        self.conn.execute("DELETE FROM notes WHERE notebook_id = ?1", params![id])?;
-        // Then delete the notebook
-        self.conn.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM notes WHERE notebook_id = ?1", params![id])?;
+        tx.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        tx.execute(
+            "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags)",
+            [],
+        )?;
+        tx.commit()?;
         println!("Deleted notebook: {}", id);
         Ok(())
     }
@@ -348,7 +363,10 @@ impl Database {
             ],
         )?;
 
-        println!("Created note: {} in notebook {}", input.title, input.notebook_id);
+        println!(
+            "Created note: {} in notebook {}",
+            input.title, input.notebook_id
+        );
 
         self.set_note_tags(&id, &input.tags)?;
 
@@ -428,7 +446,7 @@ impl Database {
                     created_at, updated_at, is_pinned, is_archived, rating
              FROM notes
              WHERE notebook_id = ?1 AND is_archived = 0
-             ORDER BY is_pinned DESC, rating DESC, updated_at DESC"
+             ORDER BY is_pinned DESC, rating DESC, updated_at DESC",
         )?;
 
         let notes = stmt.query_map(params![notebook_id], |row| {
@@ -462,7 +480,7 @@ impl Database {
             "SELECT id, notebook_id, title, content, content_type, source_url, pdf_path,
                     created_at, updated_at, is_pinned, is_archived, rating
              FROM notes
-             ORDER BY updated_at DESC"
+             ORDER BY updated_at DESC",
         )?;
 
         let notes = stmt.query_map([], |row| {
@@ -540,7 +558,8 @@ impl Database {
                 std::fs::remove_file(pdf_path).ok();
             }
         }
-        self.conn.execute("DELETE FROM notes WHERE id = ?1", params![id])?;
+        self.conn
+            .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
         println!("Deleted note: {}", id);
         Ok(())
     }
@@ -551,7 +570,10 @@ impl Database {
             "UPDATE notes SET notebook_id = ?1, updated_at = ?2 WHERE id = ?3",
             params![notebook_id, now, note_id],
         )?;
-        println!("Moved note {} to notebook {} (rows affected: {})", note_id, notebook_id, rows_affected);
+        println!(
+            "Moved note {} to notebook {} (rows affected: {})",
+            note_id, notebook_id, rows_affected
+        );
         Ok(())
     }
 
@@ -563,7 +585,7 @@ impl Database {
              FROM notes n
              JOIN notes_fts fts ON n.rowid = fts.rowid
              WHERE notes_fts MATCH ?1 AND n.is_archived = 0
-             ORDER BY rank"
+             ORDER BY rank",
         )?;
 
         let notes = stmt.query_map(params![search_query], |row| {
@@ -600,9 +622,8 @@ impl Database {
         // Save PDF to disk
         let pdf_dir = self.data_dir.join("pdfs");
         let pdf_path = pdf_dir.join(format!("{}_{}", id, file_name));
-        std::fs::write(&pdf_path, data).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
-        })?;
+        std::fs::write(&pdf_path, data)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
         let pdf_path_str = pdf_path.to_string_lossy().to_string();
 
@@ -642,9 +663,8 @@ impl Database {
     pub fn get_pdf_data(&self, note_id: &str) -> Result<Vec<u8>> {
         let note = self.get_note(note_id)?;
         if let Some(pdf_path) = note.pdf_path {
-            std::fs::read(&pdf_path).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(e))
-            })
+            std::fs::read(&pdf_path)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
         } else {
             Err(rusqlite::Error::QueryReturnedNoRows)
         }
@@ -667,10 +687,8 @@ impl Database {
     }
 
     fn set_note_tags(&self, note_id: &str, tags: &[String]) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM note_tags WHERE note_id = ?1",
-            params![note_id],
-        )?;
+        self.conn
+            .execute("DELETE FROM note_tags WHERE note_id = ?1", params![note_id])?;
 
         for tag_name in tags {
             let tag_id = self.get_or_create_tag_id(tag_name)?;
@@ -715,11 +733,14 @@ impl Database {
     }
 
     pub fn remove_tag_from_note(&self, note_id: &str, tag_name: &str) -> Result<Vec<String>> {
-        let tag_id: Option<String> = self.conn.query_row(
-            "SELECT id FROM tags WHERE name = ?1",
-            params![tag_name],
-            |row| row.get(0),
-        ).optional()?;
+        let tag_id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM tags WHERE name = ?1",
+                params![tag_name],
+                |row| row.get(0),
+            )
+            .optional()?;
         if let Some(tag_id) = tag_id {
             self.conn.execute(
                 "DELETE FROM note_tags WHERE note_id = ?1 AND tag_id = ?2",
@@ -730,9 +751,9 @@ impl Database {
     }
 
     pub fn get_all_tags(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT name FROM tags ORDER BY name ASC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT name FROM tags ORDER BY name ASC")?;
         let tags = stmt
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<String>>>()?;
