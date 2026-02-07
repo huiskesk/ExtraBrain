@@ -10,8 +10,11 @@ mod storage_paths;
 
 use db::Database;
 use std::sync::{Arc, Mutex};
+#[cfg(desktop)]
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
-use tauri::{Emitter, Manager};
+#[cfg(desktop)]
+use tauri::Emitter;
+use tauri::Manager;
 use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 // Application state shared between Tauri commands
@@ -21,7 +24,7 @@ pub struct AppState {
 
 pub fn run() {
     // Build and run the Tauri application
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -70,51 +73,62 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             println!("Database initialized with tag support.");
 
-            let export_notes_item =
-                MenuItemBuilder::with_id("export_notes", "Export All Notes...").build(app)?;
-            let file_menu = SubmenuBuilder::new(app, "File")
-                .item(&export_notes_item)
-                .build()?;
-            let menu = MenuBuilder::new(app).item(&file_menu).build()?;
-            app.set_menu(menu)?;
+            #[cfg(desktop)]
+            {
+                let export_notes_item =
+                    MenuItemBuilder::with_id("export_notes", "Export All Notes...").build(app)?;
+                let file_menu = SubmenuBuilder::new(app, "File")
+                    .item(&export_notes_item)
+                    .build()?;
+                let menu = MenuBuilder::new(app).item(&file_menu).build()?;
+                app.set_menu(menu)?;
+            }
 
             // Open devtools in debug mode
-            #[cfg(debug_assertions)]
+            #[cfg(all(desktop, debug_assertions))]
             {
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
 
-            // Get the AppHandle for the HTTP server to emit events
-            let app_handle = app.handle().clone();
+            #[cfg(desktop)]
+            {
+                // Get the AppHandle for the HTTP server to emit events
+                let app_handle = app.handle().clone();
 
-            // Create shared database for HTTP server
-            let http_db: server::SharedDatabase =
-                Arc::new(Mutex::new(Database::new(storage_paths)?));
+                // Create shared database for HTTP server
+                let http_db: server::SharedDatabase =
+                    Arc::new(Mutex::new(Database::new(storage_paths)?));
 
-            // Start the HTTP server in a background thread
-            std::thread::spawn(move || {
-                let runtime =
-                    tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                // Start the HTTP server in a background thread
+                std::thread::spawn(move || {
+                    let runtime =
+                        tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
-                runtime.block_on(async {
-                    server::start_http_server(http_db, app_handle).await;
+                    runtime.block_on(async {
+                        server::start_http_server(http_db, app_handle).await;
+                    });
                 });
-            });
+
+                println!("HTTP API available at http://127.0.0.1:3847");
+            }
 
             println!("ExtraBrain started successfully!");
-            println!("HTTP API available at http://127.0.0.1:3847");
 
             Ok(())
-        })
-        .on_menu_event(|app, event| {
-            if event.id() == "export_notes" {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("export-requested", ());
-                }
+        });
+
+    #[cfg(desktop)]
+    let builder = builder.on_menu_event(|app, event| {
+        if event.id() == "export_notes" {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.emit("export-requested", ());
             }
-        })
-        // Run the application
+        }
+    });
+
+    // Run the application
+    builder
         .run(tauri::generate_context!())
         .expect("Error while running ExtraBrain");
 }
