@@ -35,7 +35,8 @@
           "$APP/**",
           "$DOCUMENT/**",
           "$DOWNLOAD/**",
-          "$HOME/.extrabrain/**"
+          "$HOME/.extrabrain/**",
+          "$HOME/Library/Mobile Documents/com~apple~CloudDocs/ExtraBrain/**"
         ]
       },
       "path": {
@@ -45,7 +46,8 @@
         "all": true,
         "asset": true,
         "assetScope": [
-          "$HOME/.extrabrain/**"
+          "$HOME/.extrabrain/**",
+          "$HOME/Library/Mobile Documents/com~apple~CloudDocs/ExtraBrain/**"
         ]
       },
       "shell": {
