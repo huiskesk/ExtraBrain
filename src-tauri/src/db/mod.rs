@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -92,13 +92,77 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Result<Self> {
-        // Get a reliable data directory path
-        // Use home directory with .extrabrain folder for consistency
         let home_dir = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .unwrap_or_else(|_| ".".to_string());
 
-        let data_dir = PathBuf::from(home_dir).join(".extrabrain");
+        let home_path = PathBuf::from(home_dir);
+        let local_path = home_path.join(".extrabrain");
+        let icloud_path = home_path
+            .join("Library")
+            .join("Mobile Documents")
+            .join("com~apple~CloudDocs")
+            .join("ExtraBrain");
+
+        let mut data_dir = local_path.clone();
+
+        if icloud_path.exists() {
+            let icloud_db_path = icloud_path.join("extrabrain.db");
+
+            if !icloud_db_path.exists() {
+                std::fs::create_dir_all(&icloud_path).ok();
+
+                let local_db_path = local_path.join("extrabrain.db");
+                if local_db_path.exists() {
+                    if let Err(error) = std::fs::copy(&local_db_path, &icloud_db_path) {
+                        println!(
+                            "Failed to migrate local database to iCloud Drive ({} -> {}): {}",
+                            local_db_path.display(),
+                            icloud_db_path.display(),
+                            error
+                        );
+                    }
+                }
+
+                let local_attachments_path = local_path.join("attachments");
+                let icloud_attachments_path = icloud_path.join("attachments");
+                if local_attachments_path.exists() {
+                    if let Err(error) =
+                        copy_dir_all(&local_attachments_path, &icloud_attachments_path)
+                    {
+                        println!(
+                            "Failed to migrate attachments to iCloud Drive ({} -> {}): {}",
+                            local_attachments_path.display(),
+                            icloud_attachments_path.display(),
+                            error
+                        );
+                    }
+                }
+
+                let backup_path = home_path.join(".extrabrain_backup");
+                if local_path.exists() {
+                    if backup_path.exists() {
+                        std::fs::remove_dir_all(&backup_path).ok();
+                    }
+                    if let Err(error) = std::fs::rename(&local_path, &backup_path) {
+                        println!(
+                            "Failed to backup local data directory ({} -> {}): {}",
+                            local_path.display(),
+                            backup_path.display(),
+                            error
+                        );
+                    }
+                }
+            }
+
+            println!(
+                "📱 iCloud Drive detected. Using database at: {}",
+                icloud_db_path.display()
+            );
+            data_dir = icloud_path;
+        } else {
+            println!("💻 iCloud not found. Using local database.");
+        }
 
         // Create data directory if it doesn't exist
         std::fs::create_dir_all(&data_dir).ok();
@@ -835,4 +899,20 @@ impl Database {
             .collect::<Result<Vec<String>>>()?;
         Ok(tags)
     }
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let destination = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &destination)?;
+        } else {
+            std::fs::copy(entry.path(), destination)?;
+        }
+    }
+    Ok(())
 }
