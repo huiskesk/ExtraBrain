@@ -16,7 +16,13 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Note } from "../types";
 
-export default function NoteList() {
+export default function NoteList({
+  compact = false,
+  onOpenSidebar,
+}: {
+  compact?: boolean;
+  onOpenSidebar?: () => void;
+}) {
   const {
     notes,
     selectedNotebookId,
@@ -37,6 +43,15 @@ export default function NoteList() {
   const [moveMenuNoteId, setMoveMenuNoteId] = useState<string | null>(null);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isTouchLike, setIsTouchLike] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const sync = () => setIsTouchLike(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   // Close menus when clicking outside or pressing Escape
   useEffect(() => {
@@ -96,7 +111,7 @@ export default function NoteList() {
   const handleMenuOpen = (e: React.MouseEvent, noteId: string) => {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenuPosition({ x: rect.right - 192, y: rect.bottom + 4 }); // 192 = menu width (w-48)
+    setMenuPosition({ x: rect.right - 192, y: rect.bottom + 4 });
     setMoveMenuNoteId(null);
     setMenuOpenId(menuOpenId === noteId ? null : noteId);
   };
@@ -161,16 +176,27 @@ export default function NoteList() {
         <span className="text-sm font-medium text-gray-700">
           {isSearching ? "Search Results" : `${notes.length} Notes`}
         </span>
-        {selectedNotebookId && !isSearching && (
+        <div className="flex items-center gap-2">
+          {compact && onOpenSidebar && (
+            <button
+              type="button"
+              onClick={onOpenSidebar}
+              className="rounded-lg border border-gray-200 px-3 min-h-11 text-sm text-gray-700"
+            >
+              Notebooks
+            </button>
+          )}
+          {selectedNotebookId && !isSearching && (
           <button
             onClick={handleCreateNote}
-            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            className="flex min-h-11 items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
             title="New Note"
           >
             <Plus size={16} className="text-gray-600" />
             <span>New Note</span>
           </button>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Scrollable Note List */}
@@ -212,6 +238,8 @@ export default function NoteList() {
                     getPreviewText={getPreviewText}
                     onMenuOpen={handleMenuOpen}
                     isMenuOpen={menuOpenId === note.id}
+                    isTouchLike={isTouchLike}
+                    allowDrag={!isTouchLike}
                   />
                 ))}
               </div>
@@ -237,6 +265,8 @@ export default function NoteList() {
                   getPreviewText={getPreviewText}
                   onMenuOpen={handleMenuOpen}
                   isMenuOpen={menuOpenId === note.id}
+                  isTouchLike={isTouchLike}
+                  allowDrag={!isTouchLike}
                 />
               ))}
             </div>
@@ -274,6 +304,8 @@ interface NoteCardProps {
   getPreviewText: (note: Note) => string;
   onMenuOpen: (e: React.MouseEvent, noteId: string) => void;
   isMenuOpen: boolean;
+  isTouchLike: boolean;
+  allowDrag: boolean;
 }
 
 function NoteCard({
@@ -287,11 +319,13 @@ function NoteCard({
   getPreviewText,
   onMenuOpen,
   isMenuOpen,
+  isTouchLike,
+  allowDrag,
 }: NoteCardProps) {
   const tagPreview = note.tags?.slice(0, 3) ?? [];
   return (
     <div
-      draggable
+      draggable={allowDrag}
       onDragStart={(e) => onDragStart(e, note.id)}
       onDragEnd={onDragEnd}
       className={`note-card group relative p-3 mb-1 rounded-lg cursor-pointer transition-all ${
@@ -305,7 +339,7 @@ function NoteCard({
     >
       <div className="flex items-start gap-2">
         {/* Drag Handle */}
-        <div className="mt-1 opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing">
+        <div className={`mt-1 ${isTouchLike ? "opacity-30" : "opacity-0 group-hover:opacity-50"} cursor-grab active:cursor-grabbing`}>
           <GripVertical size={14} className="text-gray-400" />
         </div>
 
@@ -355,8 +389,8 @@ function NoteCard({
         {/* Menu Button */}
         <button
           onClick={(e) => onMenuOpen(e, note.id)}
-          className={`note-menu-trigger p-1 hover:bg-gray-200 rounded transition-opacity ${
-            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          className={`note-menu-trigger min-h-9 min-w-9 p-1 hover:bg-gray-200 rounded transition-opacity ${
+            isTouchLike || isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
           <MoreVertical size={14} className="text-gray-500" />

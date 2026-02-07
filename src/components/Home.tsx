@@ -69,7 +69,7 @@ export default function Home() {
 
   return (
     <div className="flex-1 overflow-hidden bg-gray-50">
-      <div className="flex h-full flex-col gap-6 p-8">
+      <div className="flex h-full flex-col gap-4 p-4 md:gap-6 md:p-8">
         <header className="space-y-3 flex-shrink-0">
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold text-gray-800">Home</h1>
@@ -80,24 +80,24 @@ export default function Home() {
         </header>
 
         <section className="flex-shrink-0 rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between px-6 pt-6 pb-3">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-6 md:pt-6">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">Recent additions</h2>
               <p className="text-sm text-gray-500">Your latest captures across notebooks.</p>
             </div>
           </div>
           {recentNotes.length === 0 ? (
-            <div className="px-6 pb-6 text-sm text-gray-500">
+            <div className="px-4 pb-4 text-sm text-gray-500 md:px-6 md:pb-6">
               No recent notes yet. Capture a new idea to see it here.
             </div>
           ) : (
-            <div className="flex gap-4 px-6 pb-6 overflow-x-auto">
+            <div className="flex gap-3 px-4 pb-4 overflow-x-auto md:gap-4 md:px-6 md:pb-6">
               {recentNotes.map((note) => (
                 <button
                   key={note.id}
                   type="button"
                   onClick={() => openNoteFromHome(note.id, note.notebook_id)}
-                  className="group text-left flex-shrink-0 w-52"
+                  className="group text-left flex-shrink-0 w-56 md:w-52"
                 >
                   <div className="text-sm font-semibold text-gray-700 mb-2 truncate">
                     {note.title}
@@ -147,7 +147,7 @@ export default function Home() {
         <section className="flex-1 min-h-0">
           <div className="flex h-full gap-6">
             <div className="flex flex-1 min-w-0 flex-col rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between px-6 pt-6 pb-3">
+              <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-6 md:pt-6">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-800">Highest ranked</h2>
                   <p className="text-sm text-gray-500">
@@ -156,18 +156,18 @@ export default function Home() {
                 </div>
               </div>
               {topRatedNotes.length === 0 ? (
-                <div className="px-6 pb-6 text-sm text-gray-500">
+                <div className="px-4 pb-4 text-sm text-gray-500 md:px-6 md:pb-6">
                   Rate a note to spotlight it here.
                 </div>
               ) : (
-                <div className="px-6 pb-6 overflow-y-auto min-h-0">
+                <div className="px-4 pb-4 overflow-y-auto min-h-0 md:px-6 md:pb-6">
                   <div className="space-y-3">
                     {topRatedNotes.map((note) => (
                       <button
                         key={note.id}
                         type="button"
                         onClick={() => openNoteFromHome(note.id, note.notebook_id)}
-                        className="w-full flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-left transition hover:border-brand-200 hover:bg-brand-50/40"
+                        className="w-full min-h-11 flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-left transition hover:border-brand-200 hover:bg-brand-50/40"
                       >
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-gray-700 truncate">
@@ -188,25 +188,25 @@ export default function Home() {
               )}
             </div>
             <div className="flex flex-1 min-w-0 flex-col rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between px-6 pt-6 pb-3">
+              <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-6 md:pt-6">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-800">Top tags</h2>
                   <p className="text-sm text-gray-500">Most-used tags across your notes.</p>
                 </div>
               </div>
               {topTags.length === 0 ? (
-                <div className="px-6 pb-6 text-sm text-gray-500">
+                <div className="px-4 pb-4 text-sm text-gray-500 md:px-6 md:pb-6">
                   Add tags to notes to build this list.
                 </div>
               ) : (
-                <div className="px-6 pb-6 overflow-y-auto min-h-0">
+                <div className="px-4 pb-4 overflow-y-auto min-h-0 md:px-6 md:pb-6">
                   <div className="flex flex-wrap gap-2">
                     {topTags.map(([tag, count]) => (
                       <button
                         key={tag}
                         type="button"
                         onClick={() => openTagView(tag)}
-                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 transition hover:bg-brand-50 hover:text-brand-700"
+                        className="inline-flex min-h-9 items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition hover:bg-brand-50 hover:text-brand-700"
                       >
                         <span>{tag}</span>
                         <span className="text-[10px] text-gray-400">({count})</span>
