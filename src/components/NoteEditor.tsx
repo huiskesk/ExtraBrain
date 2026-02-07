@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { listen } from "@tauri-apps/api/event";
-import { convertFileSrc } from "@tauri-apps/api/tauri";
+import { convertFileSrc, invoke } from "@tauri-apps/api/tauri";
 import { homeDir } from "@tauri-apps/api/path";
 import PdfViewer from "./PdfViewer";
 import { normalizeTag, normalizeTags } from "../utils/tags";

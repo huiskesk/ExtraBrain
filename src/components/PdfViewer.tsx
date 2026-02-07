@@ -25,7 +25,7 @@ export default function PdfViewer({ noteId }: PdfViewerProps) {
         }
 
         const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-        const blob = new Blob([bytes], { type: "application/pdf" });
+        const blob = new Blob([bytes as any], { type: "application/pdf" });
         const objectUrl = URL.createObjectURL(blob);
         objectUrlRef.current = objectUrl;
         setBlobUrl(objectUrl);
