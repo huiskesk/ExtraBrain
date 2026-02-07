@@ -38,6 +38,17 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
+### Tauri v2 + iOS init
+
+Use the local CLI from this project (via `pnpm`) so you do not accidentally run a global v1 binary:
+
+```bash
+pnpm tauri:ios:init
+```
+
+If you see schema errors about `devPath`, `distDir`, `package`, or `tauri`, you are using an old v1 config.
+This repo uses Tauri v2 config in `src-tauri/tauri.conf.json` (`identifier`, `build.devUrl`, `build.frontendDist`, `app`, `bundle`, `plugins`).
+
 ### Chrome Extension
 
 1. Open Chrome and go to `chrome://extensions/`
