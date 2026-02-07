@@ -6,6 +6,7 @@ mod db;
 mod sanitize;
 mod server;
 mod server_config;
+mod storage_paths;
 
 use db::Database;
 use std::sync::{Arc, Mutex};
@@ -19,18 +20,12 @@ pub struct AppState {
 }
 
 pub fn run() {
-    // Initialize the database for Tauri commands
-    let db = Database::new().expect("Failed to initialize database");
-    println!("Database initialized with tag support.");
-
     // Build and run the Tauri application
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(WindowStateBuilder::default().build())
-        // Add application state (database) accessible to all commands
-        .manage(AppState { db: Mutex::new(db) })
         // Register all Tauri commands (called from React frontend)
         .invoke_handler(tauri::generate_handler![
             // Notebook commands
@@ -54,6 +49,7 @@ pub fn run() {
             commands::add_tag,
             commands::remove_tag,
             commands::get_all_tags,
+            commands::get_storage_roots,
             // PDF commands
             commands::import_pdf,
             commands::get_pdf_data,
@@ -67,6 +63,13 @@ pub fn run() {
         ])
         // Setup hook runs when the app starts
         .setup(|app| {
+            let storage_paths = storage_paths::resolve_storage_paths(&app.handle())
+                .map_err(|e| std::io::Error::other(e))?;
+
+            let db = Database::new(storage_paths.clone())?;
+            app.manage(AppState { db: Mutex::new(db) });
+            println!("Database initialized with tag support.");
+
             let export_notes_item =
                 MenuItemBuilder::with_id("export_notes", "Export All Notes...").build(app)?;
             let file_menu = SubmenuBuilder::new(app, "File")
@@ -86,9 +89,8 @@ pub fn run() {
             let app_handle = app.handle().clone();
 
             // Create shared database for HTTP server
-            let http_db: server::SharedDatabase = Arc::new(Mutex::new(
-                Database::new().expect("Failed to initialize database for HTTP server"),
-            ));
+            let http_db: server::SharedDatabase =
+                Arc::new(Mutex::new(Database::new(storage_paths)?));
 
             // Start the HTTP server in a background thread
             std::thread::spawn(move || {

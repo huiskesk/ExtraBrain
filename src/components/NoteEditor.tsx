@@ -13,7 +13,6 @@ import {
 import DOMPurify from "dompurify";
 import { listen } from "@tauri-apps/api/event";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { homeDir } from "@tauri-apps/api/path";
 import PdfViewer from "./PdfViewer";
 import { normalizeTag, normalizeTags } from "../utils/tags";
 
@@ -178,20 +177,23 @@ export default function NoteEditor() {
   const isWebClip = Boolean(note?.source_url);
   useEffect(() => {
     let isMounted = true;
-    homeDir()
-      .then((homePath) => {
+
+    invoke<{ roots: string[] }>("get_storage_roots")
+      .then((response) => {
         if (!isMounted) {
           return;
         }
-        const normalizedHome = homePath.replace(/\\/g, "/").replace(/\/$/, "");
-        setExtrabrainRoots([
-          `${normalizedHome}/.extrabrain`,
-          `${normalizedHome}/Library/Mobile Documents/com~apple~CloudDocs/ExtraBrain`,
-        ]);
+
+        const normalizedRoots = response.roots
+          .map((root) => root.replace(/\\/g, "/").replace(/\/$/, ""))
+          .filter((root) => root.length > 0);
+
+        setExtrabrainRoots(Array.from(new Set(normalizedRoots)));
       })
       .catch((error) => {
-        console.error("Failed to resolve home directory:", error);
+        console.error("Failed to resolve storage roots:", error);
       });
+
     return () => {
       isMounted = false;
     };

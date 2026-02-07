@@ -3,6 +3,7 @@ use crate::db::{
 };
 use crate::sanitize::sanitize_html;
 use crate::server_config;
+use crate::storage_paths::{resolve_storage_paths, storage_roots_response, StorageRootsResponse};
 use crate::AppState;
 use base64::Engine;
 use chrono::{DateTime, Utc};
@@ -186,6 +187,12 @@ pub fn move_note_to_notebook(
 pub fn search_notes(state: State<AppState>, query: String) -> Result<Vec<Note>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.search_notes(&query).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_storage_roots(app: tauri::AppHandle) -> Result<StorageRootsResponse, String> {
+    let paths = resolve_storage_paths(&app)?;
+    Ok(storage_roots_response(&paths))
 }
 
 // PDF commands
