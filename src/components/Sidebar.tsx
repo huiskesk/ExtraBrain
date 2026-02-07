@@ -12,6 +12,7 @@ import {
   Menu,
   FolderDown,
   Home,
+  AlertTriangle,
 } from "lucide-react";
 import SearchBar from "./SearchBar";
 import { open, message } from "@tauri-apps/api/dialog";
@@ -67,6 +68,7 @@ export default function Sidebar() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
   const [isImportingEnex, setIsImportingEnex] = useState(false);
+  const [pendingDeleteNotebookId, setPendingDeleteNotebookId] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const mainMenuRef = useRef<HTMLDivElement>(null);
@@ -181,9 +183,23 @@ export default function Sidebar() {
 
   const handleDeleteNotebook = async (id: string) => {
     if (notebooks.length > 1) {
-      await deleteNotebook(id);
+      setPendingDeleteNotebookId(id);
     }
     setMenuOpenId(null);
+  };
+
+  const confirmDeleteNotebook = async () => {
+    if (!pendingDeleteNotebookId || notebooks.length <= 1) {
+      setPendingDeleteNotebookId(null);
+      return;
+    }
+
+    await deleteNotebook(pendingDeleteNotebookId);
+    setPendingDeleteNotebookId(null);
+  };
+
+  const cancelDeleteNotebook = () => {
+    setPendingDeleteNotebookId(null);
   };
 
   const handleImportPdf = async () => {
@@ -228,7 +244,7 @@ export default function Sidebar() {
         );
       } catch (error) {
         console.error("Failed to import ENEX:", error);
-        await message(error.toString(), {
+        await message(String(error), {
           title: "Evernote Import Failed",
           type: "error",
         });
@@ -253,7 +269,7 @@ export default function Sidebar() {
         });
       } catch (error) {
         console.error("Failed to export notes:", error);
-        await message(error.toString(), {
+        await message(String(error), {
           title: "Export Failed",
           type: "error",
         });
@@ -606,6 +622,39 @@ export default function Sidebar() {
           {notebooks.length} notebook{notebooks.length !== 1 ? "s" : ""}
         </div>
       </div>
+
+      {pendingDeleteNotebookId && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-amber-500/40 bg-gray-900 shadow-2xl">
+            <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <div className="flex items-center gap-2 text-amber-300">
+                <AlertTriangle size={18} />
+                <h3 className="text-sm font-semibold">Delete Notebook</h3>
+              </div>
+            </div>
+            <div className="px-4 py-4 text-sm leading-relaxed text-gray-200">
+              Warning: Notebook Deletion includes erasing all notes in the notebook and is
+              permanent. Are you sure you want to Delete? (Y/N)
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-700 px-4 py-3">
+              <button
+                type="button"
+                onClick={cancelDeleteNotebook}
+                className="rounded-lg border border-gray-600 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-800"
+              >
+                N
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteNotebook}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+              >
+                Y
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
