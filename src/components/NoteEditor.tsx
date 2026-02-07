@@ -68,12 +68,12 @@ function normalizeLocalImageSrc(src: string): string | null {
   return candidate.replace(/\\/g, "/");
 }
 
-function processContentImages(htmlString: string, allowedRoot: string | null): string {
-  if (!allowedRoot) {
+function processContentImages(htmlString: string, allowedRoots: string[]): string {
+  if (allowedRoots.length === 0) {
     return htmlString;
   }
 
-  const normalizedRoot = normalizePathForCompare(allowedRoot);
+  const normalizedRoots = allowedRoots.map((root) => normalizePathForCompare(root));
   return htmlString.replace(
     /<(img|embed)\s+[^>]*src=["']([^"']+)["'][^>]*>/gi,
     (match, _tag: string, src: string) => {
@@ -83,10 +83,12 @@ function processContentImages(htmlString: string, allowedRoot: string | null): s
       }
 
       const normalizedCandidate = normalizePathForCompare(candidatePath);
-      if (
-        normalizedCandidate !== normalizedRoot &&
-        !normalizedCandidate.startsWith(`${normalizedRoot}/`)
-      ) {
+      const isAllowedPath = normalizedRoots.some(
+        (normalizedRoot) =>
+          normalizedCandidate === normalizedRoot ||
+          normalizedCandidate.startsWith(`${normalizedRoot}/`)
+      );
+      if (!isAllowedPath) {
         return match;
       }
 
@@ -145,7 +147,7 @@ export default function NoteEditor() {
   const [justSaved, setJustSaved] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
-  const [extrabrainRoot, setExtrabrainRoot] = useState<string | null>(null);
+  const [extrabrainRoots, setExtrabrainRoots] = useState<string[]>([]);
   const [rating, setRating] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -182,7 +184,10 @@ export default function NoteEditor() {
           return;
         }
         const normalizedHome = homePath.replace(/\\/g, "/").replace(/\/$/, "");
-        setExtrabrainRoot(`${normalizedHome}/.extrabrain`);
+        setExtrabrainRoots([
+          `${normalizedHome}/.extrabrain`,
+          `${normalizedHome}/Library/Mobile Documents/com~apple~CloudDocs/ExtraBrain`,
+        ]);
       })
       .catch((error) => {
         console.error("Failed to resolve home directory:", error);
@@ -193,8 +198,8 @@ export default function NoteEditor() {
   }, []);
 
   const processedContent = useMemo(
-    () => processContentImages(content, extrabrainRoot),
-    [content, extrabrainRoot]
+    () => processContentImages(content, extrabrainRoots),
+    [content, extrabrainRoots]
   );
   const domPurifyConfig = useMemo(
     () => ({
