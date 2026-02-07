@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "ExtraBrain",
-    "version": "0.1.0"
+    "version": "1.0.0"
   },
   "tauri": {
     "allowlist": {
@@ -64,7 +64,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.extrabrain.app",
+      "identifier": "com.huiskeskevin.extrabrain",
       "longDescription": "A modern, privacy-focused note-taking app with web clipping, PDF support, and notebook organization.",
       "macOS": {
         "entitlements": null,
