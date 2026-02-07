@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Default capabilities for ExtraBrain desktop and mobile.",
+  "identifier": "desktop",
+  "description": "Desktop capabilities for ExtraBrain.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:default",
     "fs:default",
     "shell:default"
-  ]
+  ],
+  "platforms": ["linux", "macOS", "windows"]
 }

@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "ios",
+  "description": "Minimal iOS capabilities for ExtraBrain.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ],
+  "platforms": ["iOS"]
+}

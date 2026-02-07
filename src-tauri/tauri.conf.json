@@ -11,7 +11,11 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: blob: data: https:;"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: blob: data: https:;",
+      "capabilities": [
+        "desktop",
+        "ios"
+      ]
     },
     "windows": [
       {
