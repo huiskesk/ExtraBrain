@@ -40,12 +40,12 @@ export default function SearchBar() {
           value={localQuery}
           onChange={(e) => setLocalQuery(e.target.value)}
           placeholder="Search notes..."
-          className="w-full pl-9 pr-8 py-2 text-sm bg-gray-800 text-sidebar-text placeholder:text-gray-400 border border-gray-700 rounded-lg focus:bg-gray-900 focus:border-brand-400 focus:outline-none transition-colors"
+          className="w-full min-h-11 pl-9 pr-10 py-2 text-sm bg-gray-800 text-sidebar-text placeholder:text-gray-400 border border-gray-700 rounded-lg focus:bg-gray-900 focus:border-brand-400 focus:outline-none transition-colors"
         />
         {localQuery && (
           <button
             onClick={handleClear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-200 rounded"
+            className="absolute right-2 top-1/2 -translate-y-1/2 min-h-8 min-w-8 p-1 text-gray-400 hover:text-gray-200 rounded"
           >
             <X size={14} />
           </button>

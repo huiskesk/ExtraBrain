@@ -9,6 +9,8 @@ import {
   Check,
   ImageIcon,
   Star,
+  ArrowLeft,
+  Menu,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { listen } from "@tauri-apps/api/event";
@@ -130,7 +132,15 @@ interface ImageData {
   mime_type: string;
 }
 
-export default function NoteEditor() {
+export default function NoteEditor({
+  compact = false,
+  onBack,
+  onOpenSidebar,
+}: {
+  compact?: boolean;
+  onBack?: () => void;
+  onOpenSidebar?: () => void;
+}) {
   const { notes, selectedNoteId, updateNote } = useStore();
 
   const note = useMemo(
@@ -150,10 +160,19 @@ export default function NoteEditor() {
   const [rating, setRating] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [isTouchLike, setIsTouchLike] = useState(false);
   const dragCounter = useRef(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastDropEventRef = useRef<{ payload: string; timestamp: number } | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const sync = () => setIsTouchLike(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   // Keep track of current note id to detect changes
   const currentNoteIdRef = useRef<string | null>(null);
@@ -653,10 +672,10 @@ export default function NoteEditor() {
     <div
       ref={editorContainerRef}
       className="flex-1 flex flex-col bg-white h-full overflow-hidden relative"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragEnter={isTouchLike ? undefined : handleDragEnter}
+      onDragOver={isTouchLike ? undefined : handleDragOver}
+      onDragLeave={isTouchLike ? undefined : handleDragLeave}
+      onDrop={isTouchLike ? undefined : handleDrop}
     >
       {/* Image Drop Zone Overlay */}
       {isDraggingImage && (
@@ -672,6 +691,26 @@ export default function NoteEditor() {
 
       {/* Title */}
       <div className="flex-shrink-0 px-8 pt-8 pb-4 border-b border-gray-100">
+        {compact && (
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700"
+            >
+              <ArrowLeft size={16} />
+              Notes
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSidebar}
+              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700"
+            >
+              <Menu size={16} />
+              Notebooks
+            </button>
+          </div>
+        )}
         <input
           type="text"
           value={title}
@@ -702,7 +741,7 @@ export default function NoteEditor() {
                   key={starValue}
                   type="button"
                   onClick={() => handleRatingChange(starValue)}
-                  className="rounded-full p-1 hover:bg-amber-50 transition-colors"
+                  className="rounded-full p-2 hover:bg-amber-50 transition-colors"
                   aria-label={`Set rating to ${starValue}`}
                 >
                   <Star
@@ -723,7 +762,7 @@ export default function NoteEditor() {
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="min-h-6 min-w-6 text-gray-400 hover:text-gray-600"
                   aria-label={`Remove tag ${tag}`}
                 >
                   ×
@@ -746,7 +785,7 @@ export default function NoteEditor() {
                 }
               }}
               placeholder="Add tag"
-              className="min-w-[160px] border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+              className="min-w-[160px] border border-gray-200 rounded-full px-3 py-2 text-xs text-gray-600 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
             />
           </div>
         </div>
@@ -777,13 +816,23 @@ export default function NoteEditor() {
           <div className="flex items-center gap-2">
             {isEditing && !isWebClip && (
               <>
-                <button
-                  onClick={handleImageUploadClick}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-                >
-                  <ImageIcon size={16} />
-                  Add Image
-                </button>
+                {isTouchLike ? (
+                  <button
+                    onClick={handleImageUploadClick}
+                    className="flex min-h-11 items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                  >
+                    <ImageIcon size={16} />
+                    Import Image
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleImageUploadClick}
+                    className="flex min-h-11 items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                  >
+                    <ImageIcon size={16} />
+                    Add Image
+                  </button>
+                )}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -799,7 +848,7 @@ export default function NoteEditor() {
               <button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   hasChanges
                     ? "bg-brand-500 text-white hover:bg-brand-600"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed"
@@ -813,7 +862,7 @@ export default function NoteEditor() {
             {/* View/Edit Toggle */}
             <button
               onClick={handleToggleMode}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+              className="flex min-h-11 items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
             >
               {isEditing ? (
                 <>

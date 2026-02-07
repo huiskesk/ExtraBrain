@@ -38,7 +38,13 @@ const NOTEBOOK_COLORS = [
   "#0ea5e9", // sky
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  compact = false,
+  onNavigate,
+}: {
+  compact?: boolean;
+  onNavigate?: () => void;
+}) {
   const {
     notebooks,
     selectedNotebookId,
@@ -200,6 +206,10 @@ export default function Sidebar() {
 
   const cancelDeleteNotebook = () => {
     setPendingDeleteNotebookId(null);
+  };
+
+  const handleNavigate = () => {
+    onNavigate?.();
   };
 
   const handleImportPdf = async () => {
@@ -367,7 +377,11 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-64 h-screen bg-sidebar-bg text-sidebar-text flex flex-col flex-shrink-0">
+    <div
+      className={`h-screen bg-sidebar-bg text-sidebar-text flex flex-col flex-shrink-0 ${
+        compact ? "w-[18.5rem]" : "w-64"
+      }`}
+    >
       {/* Sticky Header */}
       <div className="flex-shrink-0 sticky top-0 z-10 bg-sidebar-bg">
         <div className="p-4 border-b border-gray-700">
@@ -382,7 +396,7 @@ export default function Sidebar() {
               <button
                 type="button"
                 onClick={() => setMainMenuOpen((prev) => !prev)}
-                className="p-2 rounded-lg text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover transition-colors"
+                className="min-h-11 p-2 rounded-lg text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover transition-colors"
                 aria-label="Open main menu"
               >
                 <Menu size={16} />
@@ -392,7 +406,7 @@ export default function Sidebar() {
                   <button
                     type="button"
                     onClick={handleExportNotes}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover"
+                    className="w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover"
                   >
                     <FolderDown size={14} />
                     Export Notes
@@ -409,7 +423,7 @@ export default function Sidebar() {
           <div className="p-3 pt-2 space-y-1">
             <button
               onClick={handleImportPdf}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+              className="w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
             >
               <Upload size={16} />
               <span>Import PDF</span>
@@ -417,15 +431,18 @@ export default function Sidebar() {
             <button
               onClick={handleImportEnex}
               disabled={isImportingEnex}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+              className="w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Upload size={16} />
               <span>{isImportingEnex ? "Importing..." : "Import Evernote (.enex)"}</span>
             </button>
             <button
               type="button"
-              onClick={goHome}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+              onClick={() => {
+                goHome();
+                handleNavigate();
+              }}
+              className={`w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
                 isHomeView
                   ? "bg-sidebar-active text-sidebar-text"
                   : "text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover"
@@ -443,7 +460,7 @@ export default function Sidebar() {
         <div className="px-3 py-2">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-muted uppercase tracking-wider"
+            className="w-full min-h-11 flex items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-muted uppercase tracking-wider"
           >
             <span>Notebooks</span>
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -461,7 +478,10 @@ export default function Sidebar() {
                       ? "bg-brand-500/30 ring-2 ring-brand-500 ring-inset"
                       : "hover:bg-sidebar-hover"
                   }`}
-                  onClick={() => selectNotebook(notebook.id)}
+                  onClick={() => {
+                    selectNotebook(notebook.id);
+                    handleNavigate();
+                  }}
                   onDragOver={(e) => handleDragOver(e, notebook.id)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, notebook.id)}
@@ -598,23 +618,29 @@ export default function Sidebar() {
         ) : (
           <button
             onClick={() => setIsCreating(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+            className="w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
           >
             <Plus size={16} />
             <span>New Notebook</span>
           </button>
         )}
         <button
-          onClick={handleCreateMainNote}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
+          onClick={async () => {
+            await handleCreateMainNote();
+            handleNavigate();
+          }}
+          className="w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover rounded-lg transition-colors"
         >
           <Plus size={16} />
           <span>New Note</span>
         </button>
         <button
           type="button"
-          onClick={openTrashView}
-          className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+          onClick={() => {
+            openTrashView();
+            handleNavigate();
+          }}
+          className={`w-full min-h-11 flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
             isTrashView
               ? "bg-sidebar-active text-sidebar-text"
               : "text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover"
