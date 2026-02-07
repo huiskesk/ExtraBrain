@@ -21,15 +21,13 @@
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false,
-        "fileDropEnabled": false
+        "fullscreen": false
       }
     ]
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "identifier": "com.huiskeskevin.extrabrain",
     "category": "Productivity",
     "shortDescription": "Modern note-taking app",
     "longDescription": "A modern, privacy-focused note-taking app with web clipping, PDF support, and notebook organization.",
