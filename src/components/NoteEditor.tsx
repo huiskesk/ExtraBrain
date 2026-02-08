@@ -197,13 +197,15 @@ export default function NoteEditor({
   useEffect(() => {
     let isMounted = true;
 
+    // Resolve filesystem roots from backend storage policy. This avoids
+    // hardcoded platform paths (especially important for iOS sandboxing).
     invoke<{ roots: string[] }>("get_storage_roots")
       .then((response) => {
         if (!isMounted) {
           return;
         }
 
-        const normalizedRoots = response.roots
+        const normalizedRoots = (response?.roots ?? [])
           .map((root) => root.replace(/\\/g, "/").replace(/\/$/, ""))
           .filter((root) => root.length > 0);
 
@@ -211,6 +213,9 @@ export default function NoteEditor({
       })
       .catch((error) => {
         console.error("Failed to resolve storage roots:", error);
+        if (isMounted) {
+          setExtrabrainRoots([]);
+        }
       });
 
     return () => {
