@@ -8,11 +8,11 @@ repository = ""
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "2.10.0", features = [] }
+tauri-build = { version = "2.5.5", features = [] }
 
 [dependencies]
 # Tauri framework
-tauri = { version = "2.10.0", features = [] }
+tauri = { version = "2.5.5", features = [] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
