@@ -203,9 +203,12 @@ impl Database {
         }
 
         // Create canonical app-private storage directories.
-        std::fs::create_dir_all(&data_dir)?;
-        std::fs::create_dir_all(data_dir.join("pdfs"))?;
-        std::fs::create_dir_all(data_dir.join("attachments"))?;
+        std::fs::create_dir_all(&data_dir)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        std::fs::create_dir_all(data_dir.join("pdfs"))
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        std::fs::create_dir_all(data_dir.join("attachments"))
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
         let db_path = data_dir.join("extrabrain.db");
 

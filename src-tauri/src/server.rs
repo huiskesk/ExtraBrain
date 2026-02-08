@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter};
 use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 
 use crate::db::{CreateNote, Database, Note, Notebook};
