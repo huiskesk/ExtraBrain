@@ -98,104 +98,114 @@ impl Database {
         let data_dir = paths.data_dir.clone();
         let using_icloud = paths.icloud_app_dir.is_some();
 
-        if let (Some(local_path), Some(icloud_app_path)) =
-            (&paths.legacy_local_data_dir, &paths.icloud_app_dir)
+        #[cfg(target_os = "macos")]
         {
-            let icloud_db_path = icloud_app_path.join("extrabrain.db");
+            if let (Some(local_path), Some(icloud_app_path)) =
+                (&paths.legacy_local_data_dir, &paths.icloud_app_dir)
+            {
+                let icloud_db_path = icloud_app_path.join("extrabrain.db");
 
-            if !icloud_db_path.exists() {
-                if let Err(e) = std::fs::create_dir_all(icloud_app_path) {
-                    println!("Failed to create iCloud app folder: {}", e);
-                }
-
-                let local_db_path = local_path.join("extrabrain.db");
-                if local_db_path.exists() {
-                    println!("Migrating database to iCloud...");
-                    if let Err(error) = std::fs::copy(&local_db_path, &icloud_db_path) {
-                        println!(
-                            "Failed to migrate local database to iCloud Drive ({} -> {}): {}",
-                            local_db_path.display(),
-                            icloud_db_path.display(),
-                            error
-                        );
+                if !icloud_db_path.exists() {
+                    if let Err(e) = std::fs::create_dir_all(icloud_app_path) {
+                        println!("Failed to create iCloud app folder: {}", e);
                     }
-                }
 
-                let local_attachments_path = local_path.join("attachments");
-                let icloud_attachments_path = icloud_app_path.join("attachments");
-                if local_attachments_path.exists() {
-                    println!("Migrating attachments to iCloud...");
-                    if let Err(error) =
-                        copy_dir_all(&local_attachments_path, &icloud_attachments_path)
-                    {
-                        println!(
-                            "Failed to migrate attachments to iCloud Drive ({} -> {}): {}",
-                            local_attachments_path.display(),
-                            icloud_attachments_path.display(),
-                            error
-                        );
-                    }
-                }
-
-                if let Some(parent_dir) = local_path.parent() {
-                    let backup_path = parent_dir.join(".extrabrain_backup");
-                    if local_path.exists() {
-                        if backup_path.exists() {
-                            std::fs::remove_dir_all(&backup_path).ok();
-                        }
-                        if let Err(error) = std::fs::rename(local_path, &backup_path) {
-                            println!("Failed to rename old local folder to backup: {}", error);
-                        } else {
-                            println!("Old local data backed up to: {}", backup_path.display());
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(icloud_app_path) = &paths.icloud_app_dir {
-            println!(
-                "📱 iCloud Drive detected. Using database at: {}",
-                icloud_app_path.join("extrabrain.db").display()
-            );
-        } else {
-            println!("Using app data directory for database.");
-        }
-
-        if !using_icloud {
-            if let Some(legacy_local_path) = &paths.legacy_local_data_dir {
-                let legacy_db_path = legacy_local_path.join("extrabrain.db");
-                let new_db_path = data_dir.join("extrabrain.db");
-                if legacy_db_path.exists() && !new_db_path.exists() {
-                    if let Err(error) = std::fs::create_dir_all(&data_dir) {
-                        println!(
-                            "Failed to create app data directory for migration: {}",
-                            error
-                        );
-                    }
-                    if let Err(error) = std::fs::copy(&legacy_db_path, &new_db_path) {
-                        println!(
-                            "Failed to migrate legacy database into app data dir: {}",
-                            error
-                        );
-                    }
-                    let legacy_attachments = legacy_local_path.join("attachments");
-                    let new_attachments = data_dir.join("attachments");
-                    if legacy_attachments.exists() {
-                        if let Err(error) = copy_dir_all(&legacy_attachments, &new_attachments) {
+                    let local_db_path = local_path.join("extrabrain.db");
+                    if local_db_path.exists() {
+                        println!("Migrating database to iCloud...");
+                        if let Err(error) = std::fs::copy(&local_db_path, &icloud_db_path) {
                             println!(
-                                "Failed to migrate legacy attachments into app data dir: {}",
+                                "Failed to migrate local database to iCloud Drive ({} -> {}): {}",
+                                local_db_path.display(),
+                                icloud_db_path.display(),
                                 error
                             );
                         }
                     }
+
+                    let local_attachments_path = local_path.join("attachments");
+                    let icloud_attachments_path = icloud_app_path.join("attachments");
+                    if local_attachments_path.exists() {
+                        println!("Migrating attachments to iCloud...");
+                        if let Err(error) =
+                            copy_dir_all(&local_attachments_path, &icloud_attachments_path)
+                        {
+                            println!(
+                                "Failed to migrate attachments to iCloud Drive ({} -> {}): {}",
+                                local_attachments_path.display(),
+                                icloud_attachments_path.display(),
+                                error
+                            );
+                        }
+                    }
+
+                    if let Some(parent_dir) = local_path.parent() {
+                        let backup_path = parent_dir.join(".extrabrain_backup");
+                        if local_path.exists() {
+                            if backup_path.exists() {
+                                std::fs::remove_dir_all(&backup_path).ok();
+                            }
+                            if let Err(error) = std::fs::rename(local_path, &backup_path) {
+                                println!("Failed to rename old local folder to backup: {}", error);
+                            } else {
+                                println!("Old local data backed up to: {}", backup_path.display());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(icloud_app_path) = &paths.icloud_app_dir {
+                println!(
+                    "📱 iCloud Drive detected. Using database at: {}",
+                    icloud_app_path.join("extrabrain.db").display()
+                );
+            } else {
+                println!("Using app data directory for database.");
+            }
+
+            if !using_icloud {
+                if let Some(legacy_local_path) = &paths.legacy_local_data_dir {
+                    let legacy_db_path = legacy_local_path.join("extrabrain.db");
+                    let new_db_path = data_dir.join("extrabrain.db");
+                    if legacy_db_path.exists() && !new_db_path.exists() {
+                        if let Err(error) = std::fs::create_dir_all(&data_dir) {
+                            println!(
+                                "Failed to create app data directory for migration: {}",
+                                error
+                            );
+                        }
+                        if let Err(error) = std::fs::copy(&legacy_db_path, &new_db_path) {
+                            println!(
+                                "Failed to migrate legacy database into app data dir: {}",
+                                error
+                            );
+                        }
+                        let legacy_attachments = legacy_local_path.join("attachments");
+                        let new_attachments = data_dir.join("attachments");
+                        if legacy_attachments.exists() {
+                            if let Err(error) = copy_dir_all(&legacy_attachments, &new_attachments)
+                            {
+                                println!(
+                                    "Failed to migrate legacy attachments into app data dir: {}",
+                                    error
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // Create data directory if it doesn't exist (safety check)
-        std::fs::create_dir_all(&data_dir).ok();
-        std::fs::create_dir_all(data_dir.join("pdfs")).ok();
+        #[cfg(not(target_os = "macos"))]
+        {
+            println!("Using app data directory for database.");
+        }
+
+        // Create canonical app-private storage directories.
+        std::fs::create_dir_all(&data_dir)?;
+        std::fs::create_dir_all(data_dir.join("pdfs"))?;
+        std::fs::create_dir_all(data_dir.join("attachments"))?;
 
         let db_path = data_dir.join("extrabrain.db");
 
@@ -209,6 +219,7 @@ impl Database {
         let db = Database { conn, data_dir };
         db.init_tables()?;
         db.create_default_notebook()?;
+        #[cfg(target_os = "macos")]
         if using_icloud {
             if let (Some(local_prefix), Some(icloud_prefix)) = (
                 paths
