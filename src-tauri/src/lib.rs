@@ -9,7 +9,9 @@ mod server_config;
 mod storage_paths;
 
 use db::Database;
-use std::sync::{Arc, Mutex};
+#[cfg(desktop)]
+use std::sync::Arc;
+use std::sync::Mutex;
 #[cfg(desktop)]
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 #[cfg(desktop)]
@@ -26,8 +28,12 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_window_state::init())
+        .plugin(tauri_plugin_fs::init());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_window_state::init());
+
+    let builder = builder
         // Register all Tauri commands (called from React frontend)
         .invoke_handler(tauri::generate_handler![
             // Notebook commands
