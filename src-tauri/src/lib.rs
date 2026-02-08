@@ -15,7 +15,6 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 #[cfg(desktop)]
 use tauri::Emitter;
 use tauri::Manager;
-use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 // Application state shared between Tauri commands
 pub struct AppState {
@@ -28,7 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(WindowStateBuilder::default().build())
+        .plugin(tauri_plugin_window_state::init())
         // Register all Tauri commands (called from React frontend)
         .invoke_handler(tauri::generate_handler![
             // Notebook commands
