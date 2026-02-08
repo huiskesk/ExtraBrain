@@ -228,7 +228,7 @@ async fn save_clip(
     // The frontend listens for "note-created" events
     let event_payload = NoteCreatedEvent { note: note.clone() };
 
-    if let Err(e) = state.app_handle.emit_all("note-created", event_payload) {
+    if let Err(e) = state.app_handle.emit("note-created", event_payload) {
         // Log error but don't fail the request - the clip was saved successfully
         eprintln!("Failed to emit note-created event: {}", e);
     } else {
