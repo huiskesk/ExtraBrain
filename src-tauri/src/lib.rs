@@ -23,6 +23,7 @@ pub struct AppState {
     pub db: Mutex<Database>,
 }
 
+#[tauri::mobile_entry_point]
 pub fn run() {
     // Build and run the Tauri application
     let builder = tauri::Builder::default()
